@@ -321,6 +321,9 @@ async function tagMessage(userMessage) {
 // ─── HANDLE INCOMING MESSAGE ──────────────────────────────────────────────────
 
 async function handleIncomingMessage(webhookData, content) {
+  // Start the master clock
+  const totalStartTime = performance.now(); 
+  
   const messageId = content.message_id;
   const conversationId = content.conversation_id;
   const userMessage = content.text.body;
@@ -330,8 +333,11 @@ async function handleIncomingMessage(webhookData, content) {
     return;
   }
 
-  // Dedup guard
+  // --- MEASUREMENT 1: Redis Latency ---
+  const redisStartTime = performance.now();
   const isNewMessage = await redis.set(`lock:${messageId}`, 'processed', 'EX', 3600, 'NX');
+  console.log(`⏱️ [1] Redis Dedup took: ${(performance.now() - redisStartTime).toFixed(2)}ms`);
+
   if (!isNewMessage) {
     console.log('⚠️ Duplicate message, skipping:', messageId);
     return;
@@ -339,42 +345,53 @@ async function handleIncomingMessage(webhookData, content) {
 
   console.log('📨 Incoming message from:', content.from);
   console.log('Conversation ID:', conversationId);
-  console.log('Message:', userMessage);
 
   if (content.from_user?.role === 'business_account') {
-    console.log('⚠️ Message from business account, ignoring');
     return;
   }
 
   if (content.type !== 'text') {
-    console.log('Not a text message, skipping');
     return;
   }
 
-  // Check static triggers first
   const staticReply = getStaticResponse(userMessage);
   if (staticReply) {
-    console.log('⚡ Static response matched');
+    const staticSendStartTime = performance.now();
     await sendTikTokMessage(webhookData.user_openid, conversationId, staticReply);
+    console.log(`⏱️ [Static] TikTok Send took: ${(performance.now() - staticSendStartTime).toFixed(2)}ms`);
+    console.log(`🏁 [Static] Total Execution time: ${(performance.now() - totalStartTime).toFixed(2)}ms`);
     return;
   }
 
   try {
+    // --- MEASUREMENT 2: Typing Indicator Latency ---
+    const typingStartTime = performance.now();
     await sendTypingIndicator(webhookData.user_openid, conversationId);
+    console.log(`⏱️ [2] Typing Indicator took: ${(performance.now() - typingStartTime).toFixed(2)}ms`);
 
+    // --- MEASUREMENT 3: AI Routing & Generation (The Bottleneck Suspect) ---
+    const aiStartTime = performance.now();
     const reply = await getAIResponse(conversationId, userMessage);
+    console.log(`⏱️ [3] AI Generation (AIBot/Dify) took: ${(performance.now() - aiStartTime).toFixed(2)}ms`);
 
-    // Fire and forget — user doesn't wait for this
+    // --- MEASUREMENT 4: Async Background Task ---
     waitUntil((async () => {
+      const asyncStartTime = performance.now();
       const tag = await tagMessage(userMessage);
       await logToGoogleSheets(conversationId, content.from, userMessage, reply, tag);
+      console.log(`⏱️ [Async] Tagging & Google Sheets log took: ${(performance.now() - asyncStartTime).toFixed(2)}ms`);
     })());
 
+    // --- MEASUREMENT 5: TikTok Reply Latency ---
+    const sendStartTime = performance.now();
     await sendTikTokMessage(webhookData.user_openid, conversationId, reply);
-    console.log('✅ Reply sent to user');
+    console.log(`⏱️ [4] TikTok Reply Send took: ${(performance.now() - sendStartTime).toFixed(2)}ms`);
+
+    // Stop the master clock
+    console.log(`🏁 [AI] Total Execution time: ${(performance.now() - totalStartTime).toFixed(2)}ms`);
 
   } catch (error) {
-    console.error('❌ All AI options failed:', error.message);
+    console.error(`❌ All AI options failed after ${(performance.now() - totalStartTime).toFixed(2)}ms. Error:`, error.message);
     await sendTikTokMessage(
       webhookData.user_openid,
       conversationId,
