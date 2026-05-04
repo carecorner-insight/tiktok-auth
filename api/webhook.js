@@ -366,13 +366,11 @@ async function handleIncomingMessage(webhookData, content) {
   try {
     // --- MEASUREMENT 2: Typing Indicator Latency ---
     const typingStartTime = performance.now();
-    await sendTypingIndicator(webhookData.user_openid, conversationId);
-    console.log(`⏱️ [2] Typing Indicator took: ${(performance.now() - typingStartTime).toFixed(2)}ms`);
-
-    // --- MEASUREMENT 3: AI Routing & Generation (The Bottleneck Suspect) ---
-    const aiStartTime = performance.now();
-    const reply = await getAIResponse(conversationId, userMessage);
-    console.log(`⏱️ [3] AI Generation (AIBot/Dify) took: ${(performance.now() - aiStartTime).toFixed(2)}ms`);
+    const [_, reply] = await Promise.all([
+      sendTypingIndicator(webhookData.user_openid, conversationId).catch(e => console.error("Typing indicator failed", e)),
+      getAIResponse(conversationId, userMessage)
+    ]);
+    console.log(`⏱️ [3] AI Generation (AIBot/Dify) took: ${(performance.now() - typingStartTime).toFixed(2)}ms`);
 
     // --- MEASUREMENT 4: Async Background Task ---
     waitUntil((async () => {
