@@ -8,5 +8,10 @@
       "path": "/api/daily-risk-report",
       "schedule": "59 15 * * *" 
     }
-  ]
+  ],
+  "functions": {
+    "api/webhook.js": {
+      "maxDuration": 60
+    }
+  }
 }
