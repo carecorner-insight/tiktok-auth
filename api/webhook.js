@@ -150,6 +150,7 @@ async function sendMessageToAI(chatId, message) {
   if (data.response?.content) return data.response.content;
   if (data.response) return data.response;
 
+  console.warn('⚠️ Unexpected AIBot response format:', data);
   throw new Error('Unexpected AIBot response format');
 }
 
