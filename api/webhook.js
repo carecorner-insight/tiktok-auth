@@ -472,6 +472,9 @@ async function sendTypingIndicator(businessId, conversationId) {
 // ─── MAIN HANDLER ─────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
+  // MAINTENANCE MODE: Acknowledge the webhook so TikTok doesn't disable it, 
+  // but do absolutely nothing else.
+  return res.status(200).send('Maintenance Mode');
   if (req.method === 'GET') {
     return res.status(200).json({ success: true, message: 'Webhook is running' });
   }
