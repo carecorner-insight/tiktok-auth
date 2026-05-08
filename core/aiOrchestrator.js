@@ -59,28 +59,67 @@ async function logToGoogleSheets(conversationId, from, userMessage, aiResponse, 
 
         const sheets = google.sheets({ version: 'v4', auth });
         const timestamp = new Date().toLocaleString('en-GB', {
-        timeZone: 'Asia/Singapore',
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true,
+            timeZone: 'Asia/Singapore',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true,
         });
 
         await sheets.spreadsheets.values.append({
-        spreadsheetId: process.env.SPREADSHEET_ID,
-        range: 'Raw_data!A:E',
-        valueInputOption: 'RAW',
-        requestBody: {
-            values: [[conversationId, from, userMessage, aiResponse, timestamp, tag]],
-        },
+            spreadsheetId: process.env.SPREADSHEET_ID,
+            range: 'Raw_data!A:E',
+            valueInputOption: 'RAW',
+            requestBody: {
+                values: [[conversationId, from, userMessage, aiResponse, timestamp, tag]],
+            },
         });
 
         console.log('✅ Logged to Google Sheets');
     } catch (error) {
         console.error('⚠️ Failed to log to Google Sheets:', error.message);
+    }
+}
+
+export async function logToSharePoint(conversationId, userId, userMessage, aiResponse, tag = '', platform = '') {
+    try {
+        const WEBHOOK_URL = process.env.POWER_AUTOMATE_WEBHOOK_URL;
+
+        if (!WEBHOOK_URL) {
+            throw new Error('POWER_AUTOMATE_WEBHOOK_URL is missing from environment variables');
+        }
+
+        // Create the exact payload Power Automate is expecting
+        const payload = {
+            conversationId: conversationId.toString(),
+            userId: userId.toString(),
+            userMessage: userMessage,
+            aiResponse: aiResponse,
+            timestamp: new Date().toISOString(), 
+            tag: tag,
+            platform: platform
+        };
+
+        const response = await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+            // 5-second timeout ensures this background task never stalls the Vercel instance
+            signal: AbortSignal.timeout(5000), 
+        });
+
+        if (!response.ok) {
+            throw new Error(`Power Automate rejected the payload: HTTP ${response.status}`);
+        }
+
+        console.log('✅ Logged to SharePoint via Power Automate');
+    } catch (error) {
+        console.error('⚠️ Failed to log to SharePoint:', error.message);
     }
 }
 
@@ -160,7 +199,7 @@ export async function handleIncomingMessage(adapter, message) {
         waitUntil((async () => {
         try {
             const tag = await tagMessage(text);
-            await logToGoogleSheets(conversationId, userId, text, reply, tag);
+            await logToSharePoint(conversationId, userId, text, reply, tag, platform);
         } catch (analyticsError) {
             console.error('⚠️ Analytics background task failed:', analyticsError.message);
         }
