@@ -12,7 +12,7 @@ export class TelegramAdapter extends BaseAdapter {
 
         // Ignore non-text messages (like images, button clicks, edits)
         if (!update.message || !update.message.text) {
-        return null;
+            return null;
         }
 
         return {
