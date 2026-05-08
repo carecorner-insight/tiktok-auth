@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 import { redis } from '../utils/redis.js';
 import BaseAdapter from '../adapters/BaseAdapter.js';
 
