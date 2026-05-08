@@ -120,108 +120,96 @@ async function tagMessage(userMessage) {
     }
 }
 
-export async function handleIncomingMessage(webhookData, content) {
-    // Start the master clock
-    const totalStartTime = performance.now(); 
-    
-    const messageId = content.messageId;
-    const conversationId = content.conversationId;
-    const userMessage = content.text;
+/**
+ * The core AI router. Completely platform-agnostic.
+ * * @param {Object} adapter - The instantiated platform adapter (e.g., TikTokAdapter, TelegramAdapter)
+ * @param {Object} message - The normalized message object created by adapter.parseWebhook()
+ */
+export async function handleIncomingMessage(adapter, message) {
+    const { messageId, conversationId, userId, text, isBotMessage, platform } = message;
 
-    if (!messageId) {
-        console.log('⚠️ No message_id found, skipping');
+    // 1. Guard Clauses: Ignore invalid payloads or bot-loop messages
+    if (!messageId || !text || isBotMessage) {
         return;
     }
 
-    // --- MEASUREMENT 1: Redis Latency ---
-    const redisStartTime = performance.now();
+    // 2. Global Deduplication Lock (Crucial for at-least-once webhook delivery)
     const isNewMessage = await redis.set(`lock:${messageId}`, 'processed', 'EX', 3600, 'NX');
-    console.log(`⏱️ [1] Redis Dedup took: ${(performance.now() - redisStartTime).toFixed(2)}ms`);
-
     if (!isNewMessage) {
-        console.log('⚠️ Duplicate message, skipping:', messageId);
+        console.log(`⚠️ [${platform}] Duplicate message skipped: ${messageId}`);
         return;
     }
 
-    console.log('📨 Incoming message from:', content.from);
-    console.log('Conversation ID:', conversationId);
+    console.log(`📨 [${platform.toUpperCase()}] Incoming from ${userId}: "${text.substring(0, 20)}..."`);
 
-    if (content.from_user?.role === 'business_account') {
-        return;
-    }
+    // 3. Static Triggers (Fast Path)
 
-    if (content.type !== 'text') {
-        return;
-    }
-
-    const staticReply = getStaticResponse(userMessage);
-    if (staticReply) {
-        const staticSendStartTime = performance.now();
-        await sendTikTokMessage(webhookData.user_openid, conversationId, staticReply);
-        console.log(`⏱️ [Static] TikTok Send took: ${(performance.now() - staticSendStartTime).toFixed(2)}ms`);
-        console.log(`🏁 [Static] Total Execution time: ${(performance.now() - totalStartTime).toFixed(2)}ms`);
-        return;
-    }
 
     try {
-        // --- MEASUREMENT 2: Typing Indicator Latency ---
-        const typingStartTime = performance.now();
+        // 4. Start AI Generation & Typing Indicator concurrently
+        // We catch the typing indicator error so a network blip doesn't kill the whole AI process
         const [_, reply] = await Promise.all([
-        sendTypingIndicator(webhookData.user_openid, conversationId).catch(e => console.error("Typing indicator failed", e)),
-        getAIResponse(conversationId, userMessage)
+        adapter.sendTypingIndicator(userId, conversationId).catch(e => 
+            console.warn(`⚠️ [${platform}] Typing indicator failed:`, e.message)
+        ),
+        getAIResponse(conversationId, text)
         ]);
-        console.log(`⏱️ [3] AI Generation (AIBot/Dify) took: ${(performance.now() - typingStartTime).toFixed(2)}ms`);
 
-        // --- MEASUREMENT 4: Async Background Task ---
+        // 5. Background Tasks (Tagging & Logging)
+        // waitUntil ensures Vercel doesn't kill the background task after we respond to the user
         waitUntil((async () => {
-        const asyncStartTime = performance.now();
-        const tag = await tagMessage(userMessage);
-        await logToGoogleSheets(conversationId, content.from, userMessage, reply, tag);
-        console.log(`⏱️ [Async] Tagging & Google Sheets log took: ${(performance.now() - asyncStartTime).toFixed(2)}ms`);
+        try {
+            const tag = await tagMessage(text);
+            await logToGoogleSheets(conversationId, userId, text, reply, tag, platform);
+        } catch (analyticsError) {
+            console.error('⚠️ Analytics background task failed:', analyticsError.message);
+        }
         })());
 
-        // --- MEASUREMENT 5: TikTok Reply Latency ---
-        const sendStartTime = performance.now();
-        await sendTikTokMessage(webhookData.user_openid, conversationId, reply);
-        console.log(`⏱️ [4] TikTok Reply Send took: ${(performance.now() - sendStartTime).toFixed(2)}ms`);
-
-        // Stop the master clock
-        console.log(`🏁 [AI] Total Execution time: ${(performance.now() - totalStartTime).toFixed(2)}ms`);
+        // 6. Send Final AI Reply
+        await adapter.sendMessage(userId, conversationId, reply);
+        console.log(`✅ [${platform}] AI Reply sent successfully.`);
 
     } catch (error) {
-        console.error(`❌ All AI options failed after ${(performance.now() - totalStartTime).toFixed(2)}ms. Error:`, error.message);
-        await sendTikTokMessage(
-        webhookData.user_openid,
-        conversationId,
-        "I'm having trouble processing your message right now. Please try again in a moment."
+        console.error(`❌ [${platform}] Critical AI Processing Failure:`, error.message);
+        
+        // Fallback: Gracefully tell the user the bot is struggling
+        try {
+        await adapter.sendMessage(
+            userId, 
+            conversationId, 
+            "I'm having trouble processing your message right now. Please try again in a moment."
         );
+        } catch (fallbackError) {
+        console.error(`🚨 [${platform}] Even the fallback message failed:`, fallbackError.message);
+        }
     }
-}
+    }
 
-// ─── AIBOT ────────────────────────────────────────────────────────────────────
+    // ─── AIBOT ────────────────────────────────────────────────────────────────────
 
-async function createAIChat() {
-  console.log('🤖 Creating AIBot chat session...');
+    async function createAIChat() {
+    console.log('🤖 Creating AIBot chat session...');
 
-  const response = await fetch(CREATE_CHAT_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: "azure~openai.gpt-5-2-chat"}),
-    signal: AbortSignal.timeout(10000),
-  });
+    const response = await fetch(CREATE_CHAT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: "azure~openai.gpt-5-2-chat"}),
+        signal: AbortSignal.timeout(10000),
+    });
 
-  if (!response.ok) {
-    throw new Error(`createAIChat failed: ${response.status}`);
-  }
+    if (!response.ok) {
+        throw new Error(`createAIChat failed: ${response.status}`);
+    }
 
-  const data = await response.json();
+    const data = await response.json();
 
-  if (!data.id) {
-    throw new Error('createAIChat returned no ID');
-  }
+    if (!data.id) {
+        throw new Error('createAIChat returned no ID');
+    }
 
-  console.log('✅ AIBot chat created, ID:', data.id);
-  return data.id;
+    console.log('✅ AIBot chat created, ID:', data.id);
+    return data.id;
 }
 
 async function sendMessageToAI(chatId, message) {
