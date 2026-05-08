@@ -124,9 +124,9 @@ export async function handleIncomingMessage(webhookData, content) {
     // Start the master clock
     const totalStartTime = performance.now(); 
     
-    const messageId = content.message_id;
-    const conversationId = content.conversation_id;
-    const userMessage = content.text.body;
+    const messageId = content.messageId;
+    const conversationId = content.conversationId;
+    const userMessage = content.text;
 
     if (!messageId) {
         console.log('⚠️ No message_id found, skipping');
