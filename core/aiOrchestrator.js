@@ -160,7 +160,7 @@ export async function handleIncomingMessage(adapter, message) {
         waitUntil((async () => {
         try {
             const tag = await tagMessage(text);
-            await logToGoogleSheets(conversationId, userId, text, reply, tag, platform);
+            await logToGoogleSheets(conversationId, userId, text, reply, tag);
         } catch (analyticsError) {
             console.error('⚠️ Analytics background task failed:', analyticsError.message);
         }
