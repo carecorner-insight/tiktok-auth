@@ -1,5 +1,5 @@
 import { redis } from '../utils/redis.js';
-import BaseAdapter from '../adapters/BaseAdapter.js';
+import { BaseAdapter } from '../adapters/BaseAdapter.js';
 
 class TikTokAdapter extends BaseAdapter {
     constructor() {
