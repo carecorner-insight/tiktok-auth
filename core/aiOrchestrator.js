@@ -120,7 +120,7 @@ async function tagMessage(userMessage) {
     }
 }
 
-async function handleIncomingMessage(webhookData, content) {
+export async function handleIncomingMessage(webhookData, content) {
     // Start the master clock
     const totalStartTime = performance.now(); 
     
