@@ -3,8 +3,8 @@
   "buildCommand": "npm run build",
   "crons": [
     {
-      "path": "/api/cron/tiktokToken",
-      "schedule": "0 */6 * * *"
+      "path": "/api/refresh-token",
+      "schedule": "59 15 * * *"
     }
   ],
   "functions": {
