@@ -25,6 +25,7 @@ export class TelegramAdapter implements IPlatformAdapter {
     return {
       platform: 'telegram',
       userId: String(from['id']),
+      messageId: String(update['update_id'] ?? ''),
       text: message['text'],
       timestamp: (message['date'] as number) * 1000,
       raw,

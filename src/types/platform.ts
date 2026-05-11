@@ -8,6 +8,8 @@ export interface NormalizedMessage {
   raw: unknown;
   // TikTok requires a separate conversationId to send replies; undefined for Telegram
   conversationId?: string;
+  // Platform-native message ID used for idempotency dedup in the webhook handler
+  messageId?: string;
 }
 
 export interface IPlatformAdapter {

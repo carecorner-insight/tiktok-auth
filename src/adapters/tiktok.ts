@@ -41,6 +41,7 @@ export class TikTokAdapter implements IPlatformAdapter {
       platform: 'tiktok',
       userId: body['user_openid'] as string,
       conversationId: content['conversation_id'] as string,
+      messageId: content['message_id'] as string | undefined,
       text: textObj['body'] as string,
       timestamp: Date.now(),
       raw,

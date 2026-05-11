@@ -1,15 +1,14 @@
 {
   "crons": [
     {
-      "path": "/api/refresh-token",
-      "schedule": "59 15 * * *"
-    },
-    {
-      "path": "/api/daily-risk-report",
-      "schedule": "59 15 * * *" 
+      "path": "/api/cron/tiktokToken",
+      "schedule": "0 */6 * * *"
     }
   ],
   "functions": {
+    "api/webhook.ts": {
+      "maxDuration": 60
+    },
     "api/webhook.js": {
       "maxDuration": 60
     }
