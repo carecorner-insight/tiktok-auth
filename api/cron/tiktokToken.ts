@@ -1,5 +1,6 @@
-import { Redis } from '@upstash/redis';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+import { getRedis } from '../../src/lib/redis';
 
 export const config = { runtime: 'nodejs' };
 
@@ -7,7 +8,7 @@ const TIKTOK_REFRESH_URL =
   'https://business-api.tiktok.com/open_api/v1.3/tt_user/oauth2/refresh_token/';
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
-  const redis = new Redis();
+  const redis = getRedis();
 
   const refreshToken = await redis.get('tiktok_refresh_token');
   if (!refreshToken) {

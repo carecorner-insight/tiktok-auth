@@ -1,6 +1,7 @@
-import { Redis } from '@upstash/redis';
 import { waitUntil } from '@vercel/functions';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+import { getRedis } from '../src/lib/redis';
 
 import { processMessage } from '../src/graph/runner';
 import { TikTokAdapter } from '../src/adapters/tiktok';
@@ -108,7 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const platform = String(req.query['platform'] ?? '');
-  const redis = new Redis();
+  const redis = getRedis();
 
   let adapter: IPlatformAdapter;
 
