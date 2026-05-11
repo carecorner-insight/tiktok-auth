@@ -1,10 +1,5 @@
 import type { CareyBotState, Platform } from '@/types/state';
-
-type RedisClient = {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string, opts: { ex: number }): Promise<unknown>;
-  del(key: string): Promise<unknown>;
-};
+import type { RedisClient } from '@/lib/redis';
 
 const SESSION_TTL_SECONDS = 21600; // 6 hours
 

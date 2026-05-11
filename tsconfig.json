@@ -14,6 +14,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "paths": {
+      "@/lib/*": ["lib/*"],
       "@/types/*": ["types/*"],
       "@/config/*": ["config/*"],
       "@/nodes/*": ["nodes/*"],

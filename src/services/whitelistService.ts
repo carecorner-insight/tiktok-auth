@@ -1,11 +1,7 @@
 import type { Platform } from '@/types/state';
+import type { RedisClient } from '@/lib/redis';
 
 type WhitelistStatus = 'approved' | 'pending' | 'unknown';
-
-type RedisClient = {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string, opts: { ex: number }): Promise<unknown>;
-};
 
 type FetchWhitelistFn = (
   platform: Platform,
