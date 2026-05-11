@@ -1,7 +1,7 @@
 import { waitUntil } from '@vercel/functions';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-import { getRedis } from '../src/lib/redis';
+import { getRedis, RedisClient } from '../src/lib/redis';
 
 import { processMessage } from '../src/graph/runner';
 import { TikTokAdapter } from '../src/adapters/tiktok';
@@ -47,7 +47,7 @@ async function fetchWhitelistStatus(
 async function handleMessage(
   adapter: IPlatformAdapter,
   body: unknown,
-  redis: Redis,
+  redis: RedisClient,
 ): Promise<void> {
   // Normalize — throws for bot messages, non-text, unsupported events
   let msg;
