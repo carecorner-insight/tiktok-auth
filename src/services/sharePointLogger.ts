@@ -11,16 +11,16 @@ export class SharePointLogger {
   async log(
     state: CareyBotState,
     userMessage: string,
-    botReply: string,
+    aiResponse: string,
   ): Promise<void> {
     const payload = {
       platform: state.platform,
       userId: state.userId,
-      sessionId: state.sessionId,
-      riskLevel: state.riskLevel,
+      conversationId: state.conversationId,
+      tag: state.tag,
       conversationPhase: state.conversationPhase,
       userMessage,
-      botReply,
+      aiResponse,
       timestamp: new Date().toISOString(),
     };
 

@@ -1,6 +1,6 @@
 export type Platform = 'tiktok' | 'telegram';
 
-export type RiskLevel = 'low' | 'medium' | 'high';
+export type tag = 'low' | 'medium' | 'high';
 
 export type ConversationPhase =
   | 'questionnaire'
@@ -20,7 +20,7 @@ export interface CareyBotState {
   // Identity
   platform: Platform;
   userId: string;
-  sessionId: string;
+  conversationId: string;
 
   // RBAC
   isAuthorized: boolean;
@@ -28,7 +28,7 @@ export interface CareyBotState {
   // Questionnaire — Q1 is suicidal ideation (PHQ-9 Q9, screened first)
   questionIndex: number;       // 0–8; 9 = all answered
   answers: string[];           // 'yes' | 'no' per question
-  riskLevel: RiskLevel | null;
+  tag: tag | null;
 
   // Post-questionnaire flow
   conversationPhase: ConversationPhase;
@@ -47,15 +47,15 @@ export interface CareyBotState {
 export const initialState = (
   platform: Platform,
   userId: string,
-  sessionId: string,
+  conversationId: string,
 ): CareyBotState => ({
   platform,
   userId,
-  sessionId,
+  conversationId,
   isAuthorized: false,
   questionIndex: 0,
   answers: [],
-  riskLevel: null,
+  tag: null,
   conversationPhase: 'questionnaire',
   selectedOption: null,
   messages: [],
