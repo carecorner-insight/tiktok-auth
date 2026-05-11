@@ -26,10 +26,10 @@ describe('SharePointLogger', () => {
     );
   });
 
-  it('includes platform, userId, riskLevel in the payload', async () => {
+  it('includes platform, userId, tag in the payload', async () => {
     mockFetch.mockResolvedValue({ ok: true });
     const svc = makeService();
-    const state = makeState({ platform: 'tiktok', userId: 'tiktok-user-99', riskLevel: 'high' });
+    const state = makeState({ platform: 'tiktok', userId: 'tiktok-user-99', tag: 'high' });
 
     await svc.log(state, 'help', 'emergency response');
 
@@ -37,9 +37,9 @@ describe('SharePointLogger', () => {
     expect(body).toMatchObject({
       platform: 'tiktok',
       userId: 'tiktok-user-99',
-      riskLevel: 'high',
+      tag: 'high',
       userMessage: 'help',
-      botReply: 'emergency response',
+      aiResponse: 'emergency response',
     });
   });
 

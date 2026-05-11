@@ -1,11 +1,11 @@
-import type { CareyBotState, Platform, RiskLevel, ConversationPhase } from '@/types/state';
+import type { CareyBotState, Platform, ConversationPhase } from '@/types/state';
 import type { NormalizedMessage } from '@/types/platform';
 import { initialState } from '@/types/state';
 
 // ── State factories ──────────────────────────────────────────────────────────
 
 export const makeState = (overrides: Partial<CareyBotState> = {}): CareyBotState => ({
-  ...initialState('telegram', 'user-123', 'session-abc'),
+  ...initialState('telegram', 'user-123', 'conversation-abc'),
   isAuthorized: true,
   ...overrides,
 });
