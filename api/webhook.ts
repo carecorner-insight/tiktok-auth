@@ -69,8 +69,8 @@ async function handleMessage(
     whitelist: new WhitelistService(redis, fetchWhitelistStatus),
     session: new SessionManager(redis),
     aiBots: new AIBotsClient(
-      process.env.DIRECTUS_URL ?? '',
-      process.env.DIRECTUS_TOKEN ?? '',
+      process.env.DIRECTUS_CREATE_CHAT_URL ?? '',
+      process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
     ),
   };
 

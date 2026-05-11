@@ -19,7 +19,7 @@ const makeServices = (overrides: Partial<{
       save: jest.fn().mockResolvedValue(undefined),
       clear: jest.fn().mockResolvedValue(undefined),
     },
-    aiBots: { chat: jest.fn().mockResolvedValue(aiReply) },
+    aiBots: { chat: jest.fn().mockResolvedValue({ reply: aiReply, chatId: 'mock-chat-id' }) },
   };
 };
 

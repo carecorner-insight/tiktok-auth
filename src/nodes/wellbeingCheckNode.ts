@@ -1,16 +1,18 @@
 import type { CareyBotState } from '@/types/state';
 import type { NodeResult } from '@/types/nodes';
-import type { Message } from '@/types/state';
+import { getLastUserInput } from '@/types/nodes';
 
 interface IAIBotsClient {
-  chat(messages: Message[]): Promise<string>;
+  chat(chatId: string | null, text: string): Promise<{ reply: string; chatId: string }>;
 }
 
 export function makeWellbeingCheckNode(aiBotsClient: IAIBotsClient) {
   return async function wellbeingCheckNode(state: CareyBotState): Promise<NodeResult> {
-    const reply = await aiBotsClient.chat(state.messages);
+    const userText = getLastUserInput(state);
+    const result = await aiBotsClient.chat(state.aiBotChatId, userText);
     return {
-      pendingResponse: reply,
+      aiBotChatId: result.chatId,
+      pendingResponse: result.reply,
       conversationPhase: 'ended',
     };
   };

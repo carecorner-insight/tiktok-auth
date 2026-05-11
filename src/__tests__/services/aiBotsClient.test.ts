@@ -1,64 +1,96 @@
 import { AIBotsClient } from '@/services/aiBotsClient';
-import type { Message } from '@/types/state';
 
-const DIRECTUS_URL = 'https://directus.example.com';
-const DIRECTUS_TOKEN = 'test-token';
+const CREATE_URL = 'https://directus.example.com/flows/trigger/create-chat';
+const SEND_URL = 'https://directus.example.com/flows/trigger/send-message';
 
 const mockFetch = jest.fn();
-const makeClient = () => new AIBotsClient(DIRECTUS_URL, DIRECTUS_TOKEN, mockFetch as any);
+const makeClient = () => new AIBotsClient(CREATE_URL, SEND_URL, mockFetch as any);
 
-const messages: Message[] = [
-  { role: 'user', content: 'I feel sad', timestamp: 1000 },
-];
+const mockCreate = (id = 'chat-abc') =>
+  ({ ok: true, json: async () => ({ id }) });
+
+const mockSend = (content = 'I hear you.') =>
+  ({ ok: true, json: async () => ({ response: { content } }) });
 
 beforeEach(() => jest.clearAllMocks());
 
-describe('AIBotsClient.chat', () => {
-  it('sends conversation history to Directus and returns the AI response', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ reply: 'I hear you.' }),
-    });
-
+describe('AIBotsClient.createChat', () => {
+  it('POSTs to createChatUrl and returns the chat id', async () => {
+    mockFetch.mockResolvedValue(mockCreate('chat-123'));
     const client = makeClient();
-    const reply = await client.chat(messages);
+    const id = await client.createChat();
+    expect(id).toBe('chat-123');
+    expect(mockFetch).toHaveBeenCalledWith(CREATE_URL, expect.objectContaining({ method: 'POST' }));
+  });
 
-    expect(reply).toBe('I hear you.');
+  it('throws when response is not ok', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+    await expect(makeClient().createChat()).rejects.toThrow('createChat failed: 500');
+  });
+
+  it('throws when response has no id', async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
+    await expect(makeClient().createChat()).rejects.toThrow('no id in response');
+  });
+});
+
+describe('AIBotsClient.sendMessage', () => {
+  it('POSTs text and chatId, returns reply content', async () => {
+    mockFetch.mockResolvedValue(mockSend('That sounds hard.'));
+    const reply = await makeClient().sendMessage('chat-abc', 'I feel sad');
+    expect(reply).toBe('That sounds hard.');
     expect(mockFetch).toHaveBeenCalledWith(
-      `${DIRECTUS_URL}/flows/trigger/careybot`,
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          Authorization: `Bearer ${DIRECTUS_TOKEN}`,
-        }),
-        body: expect.stringContaining('I feel sad'),
-      }),
+      SEND_URL,
+      expect.objectContaining({ body: expect.stringContaining('"chat_id":"chat-abc"') }),
     );
   });
 
-  it('retries once with full history on empty reply (AIBots crash recovery)', async () => {
+  it('accepts flat string response format', async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ response: 'Flat reply' }) });
+    const reply = await makeClient().sendMessage('chat-abc', 'hi');
+    expect(reply).toBe('Flat reply');
+  });
+
+  it('throws when response is not ok', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 502 });
+    await expect(makeClient().sendMessage('chat-abc', 'hi')).rejects.toThrow('sendMessage failed: 502');
+  });
+
+  it('throws on unexpected response format', async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ something: 'else' }) });
+    await expect(makeClient().sendMessage('chat-abc', 'hi')).rejects.toThrow('unexpected response format');
+  });
+});
+
+describe('AIBotsClient.chat', () => {
+  it('creates a new chat when chatId is null', async () => {
     mockFetch
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ reply: '' }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ reply: 'Recovered reply' }) });
+      .mockResolvedValueOnce(mockCreate('new-chat'))
+      .mockResolvedValueOnce(mockSend('Hello'));
 
-    const client = makeClient();
-    const reply = await client.chat(messages);
-
-    expect(reply).toBe('Recovered reply');
+    const result = await makeClient().chat(null, 'hi');
+    expect(result.chatId).toBe('new-chat');
+    expect(result.reply).toBe('Hello');
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('throws after max retries are exceeded', async () => {
-    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ reply: '' }) });
+  it('reuses existing chatId without creating a new chat', async () => {
+    mockFetch.mockResolvedValueOnce(mockSend('Hello'));
 
-    const client = makeClient();
-    await expect(client.chat(messages)).rejects.toThrow('AIBots: max retries exceeded');
+    const result = await makeClient().chat('existing-chat', 'hi');
+    expect(result.chatId).toBe('existing-chat');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(SEND_URL, expect.anything());
   });
 
-  it('throws when Directus returns a non-ok HTTP response', async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 502 });
+  it('retries with a fresh chat session when sendMessage fails (crash recovery)', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 503 }) // sendMessage fails
+      .mockResolvedValueOnce(mockCreate('fresh-chat'))   // createChat on retry
+      .mockResolvedValueOnce(mockSend('Recovered'));     // sendMessage succeeds
 
-    const client = makeClient();
-    await expect(client.chat(messages)).rejects.toThrow('Directus error: 502');
+    const result = await makeClient().chat('stale-chat', 'hi');
+    expect(result.chatId).toBe('fresh-chat');
+    expect(result.reply).toBe('Recovered');
   });
 });

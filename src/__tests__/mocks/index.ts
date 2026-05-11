@@ -56,8 +56,8 @@ export const makeSharePointLoggerMock = () => ({
   log: jest.fn().mockResolvedValue(undefined),
 });
 
-export const makeAIBotsClientMock = () => ({
-  chat: jest.fn().mockResolvedValue('I hear you. Can you tell me more?'),
+export const makeAIBotsClientMock = (reply = 'I hear you. Can you tell me more?') => ({
+  chat: jest.fn().mockResolvedValue({ reply, chatId: 'mock-chat-id' }),
 });
 
 // ── Answer helpers ───────────────────────────────────────────────────────────

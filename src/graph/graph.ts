@@ -53,6 +53,7 @@ const GraphAnnotation = Annotation.Root({
   messages:           Annotation<Message[]>({ reducer: (_, next) => next, default: () => [] }),
   pendingResponse:    Annotation<string | null>,
   crisisDetected:     Annotation<boolean>,
+  aiBotChatId:        Annotation<string | null>,
 });
 
 // ── Routing functions (used in addConditionalEdges) ───────────────────────────

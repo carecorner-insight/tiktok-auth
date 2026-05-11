@@ -42,6 +42,9 @@ export interface CareyBotState {
 
   // Set true when crisis detected mid free-text (Option 1)
   crisisDetected: boolean;
+
+  // AIBots server-side chat session ID (created on first AI call, persisted across turns)
+  aiBotChatId: string | null;
 }
 
 export const initialState = (
@@ -61,4 +64,5 @@ export const initialState = (
   messages: [],
   pendingResponse: null,
   crisisDetected: false,
+  aiBotChatId: null,
 });
