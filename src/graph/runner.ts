@@ -1,7 +1,7 @@
-import type { CareyBotState } from '@/types/state';
-import type { NormalizedMessage } from '@/types/platform';
-import { initialState } from '@/types/state';
-import { buildGraph, type GraphServices } from '@/graph/graph';
+import type { CareyBotState } from '../types/state';
+import type { NormalizedMessage } from '../types/platform';
+import { initialState } from '../types/state';
+import { buildGraph, type GraphServices } from './graph';
 
 interface RunnerServices extends GraphServices {
   session: GraphServices['session'] & {

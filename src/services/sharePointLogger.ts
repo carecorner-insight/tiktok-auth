@@ -1,4 +1,4 @@
-import type { CareyBotState } from '@/types/state';
+import type { CareyBotState } from '../types/state';
 
 type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean }>;
 

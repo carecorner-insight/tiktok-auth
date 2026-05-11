@@ -1,6 +1,6 @@
-import type { CareyBotState, Message } from '@/types/state';
-import type { NodeResult } from '@/types/nodes';
-import { getLastUserInput } from '@/types/nodes';
+import type { CareyBotState, Message } from '../types/state';
+import type { NodeResult } from '../types/nodes';
+import { getLastUserInput } from '../types/nodes';
 
 interface IAIBotsClient {
   chat(chatId: string | null, text: string): Promise<{ reply: string; chatId: string }>;

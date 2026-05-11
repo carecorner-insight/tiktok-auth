@@ -1,6 +1,6 @@
-import type { CareyBotState } from '@/types/state';
-import type { NodeResult } from '@/types/nodes';
-import { COUNSELLING_URL } from '@/config/questionnaire';
+import type { CareyBotState } from '../types/state';
+import type { NodeResult } from '../types/nodes';
+import { COUNSELLING_URL } from '../config/questionnaire';
 
 export function resourceRedirectNode(_state: CareyBotState): NodeResult {
   return {

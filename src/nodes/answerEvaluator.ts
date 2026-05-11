@@ -1,7 +1,7 @@
-import type { CareyBotState } from '@/types/state';
-import type { NodeResult } from '@/types/nodes';
-import { getLastUserInput } from '@/types/nodes';
-import { RISK_THRESHOLDS } from '@/config/questionnaire';
+import type { CareyBotState } from '../types/state';
+import type { NodeResult } from '../types/nodes';
+import { getLastUserInput } from '../types/nodes';
+import { RISK_THRESHOLDS } from '../config/questionnaire';
 
 export function answerEvaluator(state: CareyBotState): NodeResult {
   const input = getLastUserInput(state);

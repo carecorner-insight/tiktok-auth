@@ -1,20 +1,20 @@
 import { StateGraph, Annotation, END, START } from '@langchain/langgraph';
-import type { CareyBotState, Platform, ConversationPhase, MenuOption, Message } from '@/types/state';
-import type { tag } from '@/types/state';
+import type { CareyBotState, Platform, ConversationPhase, MenuOption, Message } from '../types/state';
+import type { tag } from '../types/state';
 
-import { router } from '@/nodes/router';
-import { questionnaireNode } from '@/nodes/questionnaireNode';
-import { answerEvaluator } from '@/nodes/answerEvaluator';
-import { emergencyHandler } from '@/nodes/emergencyHandler';
-import { menuPresenter } from '@/nodes/menuPresenter';
-import { optionRouter } from '@/nodes/optionRouter';
-import { resourceRedirectNode } from '@/nodes/resourceRedirectNode';
+import { router } from '../nodes/router';
+import { questionnaireNode } from '../nodes/questionnaireNode';
+import { answerEvaluator } from '../nodes/answerEvaluator';
+import { emergencyHandler } from '../nodes/emergencyHandler';
+import { menuPresenter } from '../nodes/menuPresenter';
+import { optionRouter } from '../nodes/optionRouter';
+import { resourceRedirectNode } from '../nodes/resourceRedirectNode';
 
-import { makeAuthGuard } from '@/nodes/authGuard';
-import { makeFreeTextNode } from '@/nodes/freeTextNode';
-import { makeWellbeingCheckNode } from '@/nodes/wellbeingCheckNode';
-import { makeStressManagementNode } from '@/nodes/stressManagementNode';
-import { makeSessionPersister } from '@/nodes/sessionPersister';
+import { makeAuthGuard } from '../nodes/authGuard';
+import { makeFreeTextNode } from '../nodes/freeTextNode';
+import { makeWellbeingCheckNode } from '../nodes/wellbeingCheckNode';
+import { makeStressManagementNode } from '../nodes/stressManagementNode';
+import { makeSessionPersister } from '../nodes/sessionPersister';
 
 // ── Services interfaces (graph accepts abstractions, not concretions) ─────────
 

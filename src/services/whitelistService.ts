@@ -1,5 +1,5 @@
-import type { Platform } from '@/types/state';
-import type { RedisClient } from '@/lib/redis';
+import type { Platform } from '../types/state';
+import type { RedisClient } from '../lib/redis';
 
 type WhitelistStatus = 'approved' | 'pending' | 'unknown';
 
