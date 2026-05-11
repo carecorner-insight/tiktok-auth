@@ -67,15 +67,14 @@ export const RISK_THRESHOLDS = {
 export const MENU_TEXT = `Thanks for answering that.\n\nWhat would feel most helpful right now?\n\n1. Talk about something that's been bothering me\n2. Do a quick wellbeing self-check\n3. Learn ways to manage stress\n4. Find support / resources`;
 
 export const EMERGENCY_MESSAGE =
-  "I'm really concerned about your safety. Please reach out to a crisis line immediately:\n\n" +
-  "🇸🇬 IMH Crisis Hotline: 6389 2222 (24/7)\n" +
-  "🇸🇬 SOS: 1800 221 4444 (24/7)\n\n" +
-  "If you are in immediate danger, please call 995.\n\n" +
-  "You are not alone, and help is available right now.";
+  "I'm really concerned about your safety right now.\n\n" +
+  "Please call 1771 (National Mindline) now.\n\n" +
+  "If possible, stay near someone you trust or let someone nearby know you need support.";
 
 export const UNAUTHORIZED_MESSAGE =
   "Hi! CareyBot is currently in private access.\n\n" +
   "To request access, please register at: {REGISTRATION_URL}\n\n" +
   "Your User ID is: {USER_ID}";
 
-export const COUNSELLING_URL = process.env.COUNSELLING_BOOKING_URL ?? '';
+export const COUNSELLING_URL =
+  process.env.COUNSELLING_BOOKING_URL ?? 'https://carecorner-ist.my.site.com/insight/';

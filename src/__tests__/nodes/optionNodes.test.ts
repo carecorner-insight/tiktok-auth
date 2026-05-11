@@ -37,14 +37,22 @@ describe('freeTextNode', () => {
     );
   });
 
-  it('sets crisisDetected=true and conversationPhase=ended when AI detects crisis', async () => {
+  it('sets crisisDetected=true and conversationPhase=ended when AIBots prefixes [CRISIS]', async () => {
     const aiMock = makeAIBotsClientMock();
-    // Crisis signal injected via AIBots response flag
-    aiMock.chat.mockResolvedValue('__CRISIS__');
+    aiMock.chat.mockResolvedValue('[CRISIS] I\'m really concerned about your safety right now. Please call 1771.');
     const node = makeFreeTextNode(aiMock);
     const result = await node(stateWithUserMessage('I want to end it'));
     expect(result.crisisDetected).toBe(true);
     expect(result.conversationPhase).toBe('ended');
+  });
+
+  it('strips [CRISIS] prefix before sending reply to user', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue('[CRISIS] Please call 1771 now.');
+    const node = makeFreeTextNode(aiMock);
+    const result = await node(stateWithUserMessage('help'));
+    expect(result.pendingResponse).toBe('Please call 1771 now.');
+    expect(result.pendingResponse).not.toContain('[CRISIS]');
   });
 });
 
