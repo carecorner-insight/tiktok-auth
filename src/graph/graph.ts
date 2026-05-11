@@ -1,5 +1,5 @@
 import { StateGraph, Annotation, END, START } from '@langchain/langgraph';
-import type { CareyBotState, Platform, ConversationPhase, MenuOption } from '@/types/state';
+import type { CareyBotState, Platform, ConversationPhase, MenuOption, Message } from '@/types/state';
 import type { tag } from '@/types/state';
 
 import { router } from '@/nodes/router';
