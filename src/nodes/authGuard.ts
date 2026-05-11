@@ -1,9 +1,13 @@
 import type { CareyBotState } from '@/types/state';
 import type { NodeResult } from '@/types/nodes';
-import type { WhitelistService } from '@/services/whitelistService';
 import { UNAUTHORIZED_MESSAGE } from '@/config/questionnaire';
+import type { Platform } from '@/types/state';
 
-export function makeAuthGuard(whitelistService: WhitelistService) {
+interface IWhitelistService {
+  isAuthorized(platform: Platform, userId: string): Promise<boolean>;
+}
+
+export function makeAuthGuard(whitelistService: IWhitelistService) {
   return async function authGuard(state: CareyBotState): Promise<NodeResult> {
     const authorized = await whitelistService.isAuthorized(state.platform, state.userId);
 

@@ -1,6 +1,8 @@
 import type { CareyBotState, Message } from '@/types/state';
 import type { NodeResult } from '@/types/nodes';
-import type { AIBotsClient } from '@/services/aiBotsClient';
+interface IAIBotsClient {
+  chat(messages: Message[]): Promise<string>;
+}
 import { getLastUserInput } from '@/types/nodes';
 
 // AIBots prefixes its reply with [CRISIS] when it enters State 8 (crisis routing).
@@ -9,7 +11,7 @@ import { getLastUserInput } from '@/types/nodes';
 // message AIBots generates is preserved and shown to the user.
 const CRISIS_PREFIX = '[CRISIS]';
 
-export function makeFreeTextNode(aiBotsClient: AIBotsClient) {
+export function makeFreeTextNode(aiBotsClient: IAIBotsClient) {
   return async function freeTextNode(state: CareyBotState): Promise<NodeResult> {
     const userInput = getLastUserInput(state);
 
