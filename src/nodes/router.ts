@@ -1,15 +1,31 @@
 import type { CareyBotState } from '@/types/state';
 
-const OPTION_ROUTES: Record<number, string> = {
-  1: 'freeText',
-  2: 'wellbeingCheck',
-  3: 'stressManagement',
-  4: 'resourceRedirect',
+const OPTION_NODE: Record<number, string> = {
+  1: 'freeTextNode',
+  2: 'wellbeingCheckNode',
+  3: 'stressManagementNode',
+  4: 'resourceRedirectNode',
 };
 
 export function router(state: CareyBotState): string {
-  if (state.conversationPhase === 'option' && state.selectedOption) {
-    return OPTION_ROUTES[state.selectedOption] ?? 'menu';
+  const { conversationPhase, selectedOption } = state;
+
+  if (conversationPhase === 'questionnaire') {
+    // If the last assistant message was a Yes/No question, the user's
+    // current message is an answer to it — evaluate it.
+    // Otherwise, present the next question.
+    const lastAssistant = [...state.messages]
+      .reverse()
+      .find(m => m.role === 'assistant');
+    const awaitingAnswer = lastAssistant?.content.includes('Yes / No') ?? false;
+    return awaitingAnswer ? 'answerEvaluator' : 'questionnaireNode';
   }
-  return state.conversationPhase;
+
+  if (conversationPhase === 'menu') return 'optionRouter';
+
+  if (conversationPhase === 'option' && selectedOption) {
+    return OPTION_NODE[selectedOption] ?? 'optionRouter';
+  }
+
+  return 'sessionPersister';
 }
