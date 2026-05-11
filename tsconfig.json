@@ -19,7 +19,8 @@
       "@/nodes/*": ["nodes/*"],
       "@/services/*": ["services/*"],
       "@/adapters/*": ["adapters/*"],
-      "@/graph/*": ["graph/*"]
+      "@/graph/*": ["graph/*"],
+      "@/__tests__/*": ["__tests__/*"]
     },
     "baseUrl": "src"
   },

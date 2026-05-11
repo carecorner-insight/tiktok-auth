@@ -12,6 +12,7 @@ const config: Config = {
     '^@/services/(.*)$': '<rootDir>/src/services/$1',
     '^@/adapters/(.*)$': '<rootDir>/src/adapters/$1',
     '^@/graph/(.*)$': '<rootDir>/src/graph/$1',
+    '^@/__tests__/(.*)$': '<rootDir>/src/__tests__/$1',
   },
   collectCoverageFrom: [
     'src/**/*.ts',
