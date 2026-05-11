@@ -1,6 +1,4 @@
 {
-  "outputDirectory": ".",
-  "buildCommand": "npm run build",
   "crons": [
     {
       "path": "/api/refresh-token",
@@ -11,7 +9,7 @@
     "api/webhook.ts": {
       "maxDuration": 60
     },
-    "api/webhook-new.js": {
+    "api/webhook.js": {
       "maxDuration": 60
     }
   }
