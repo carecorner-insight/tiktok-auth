@@ -57,8 +57,11 @@ const GraphAnnotation = Annotation.Root({
 
 // ── Routing functions (used in addConditionalEdges) ───────────────────────────
 
+// After auth check, call the router directly to get the target node.
+// Unauthorized users end here; authorized users are dispatched by phase.
 function routeFromAuth(state: typeof GraphAnnotation.State): string {
-  return state.isAuthorized ? '__router__' : END;
+  if (!state.isAuthorized) return END;
+  return router(state as CareyBotState);
 }
 
 function routeFromAnswerEvaluator(state: typeof GraphAnnotation.State): string {
@@ -91,7 +94,6 @@ export function buildGraph(services: GraphServices) {
 
     // ── Nodes ──
     .addNode('authGuard',            authGuard)
-    .addNode('__router__',           router)       // routing function used as a pass-through node
     .addNode('questionnaireNode',    questionnaireNode)
     .addNode('answerEvaluator',      answerEvaluator)
     .addNode('emergencyHandler',     emergencyHandler)
@@ -106,14 +108,8 @@ export function buildGraph(services: GraphServices) {
     // ── Entry ──
     .addEdge(START, 'authGuard')
 
-    // ── Auth → router or END ──
+    // ── Auth check → dispatch by phase, or END for unauthorized ──
     .addConditionalEdges('authGuard', routeFromAuth, {
-      __router__: '__router__',
-      [END]: END,
-    })
-
-    // ── Router dispatches to correct node ──
-    .addConditionalEdges('__router__', router, {
       questionnaireNode:    'questionnaireNode',
       answerEvaluator:      'answerEvaluator',
       optionRouter:         'optionRouter',
@@ -122,6 +118,7 @@ export function buildGraph(services: GraphServices) {
       stressManagementNode: 'stressManagementNode',
       resourceRedirectNode: 'resourceRedirectNode',
       sessionPersister:     'sessionPersister',
+      [END]: END,
     })
 
     // ── answerEvaluator → emergency | next question | menu ──
