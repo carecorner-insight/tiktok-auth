@@ -1,5 +1,5 @@
-import type { CareyBotState, Platform } from '@/types/state';
-import type { NodeResult } from '@/types/nodes';
+import type { CareyBotState, Platform } from '../types/state';
+import type { NodeResult } from '../types/nodes';
 
 interface ISessionManager {
   save(state: CareyBotState): Promise<void>;

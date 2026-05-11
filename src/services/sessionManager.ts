@@ -1,5 +1,5 @@
-import type { CareyBotState, Platform } from '@/types/state';
-import type { RedisClient } from '@/lib/redis';
+import type { CareyBotState, Platform } from '../types/state';
+import type { RedisClient } from '../lib/redis';
 
 const SESSION_TTL_SECONDS = 21600; // 6 hours
 

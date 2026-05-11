@@ -1,4 +1,4 @@
-import type { IPlatformAdapter, NormalizedMessage } from '@/types/platform';
+import type { IPlatformAdapter, NormalizedMessage } from '../types/platform';
 
 type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean; json(): Promise<unknown> }>;
 type GetTokenFn = () => Promise<string>;

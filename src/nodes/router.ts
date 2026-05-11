@@ -1,4 +1,4 @@
-import type { CareyBotState } from '@/types/state';
+import type { CareyBotState } from '../types/state';
 
 const OPTION_NODE: Record<number, string> = {
   1: 'freeTextNode',

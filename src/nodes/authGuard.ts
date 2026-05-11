@@ -1,7 +1,7 @@
-import type { CareyBotState } from '@/types/state';
-import type { NodeResult } from '@/types/nodes';
-import { UNAUTHORIZED_MESSAGE } from '@/config/questionnaire';
-import type { Platform } from '@/types/state';
+import type { CareyBotState } from '../types/state';
+import type { NodeResult } from '../types/nodes';
+import { UNAUTHORIZED_MESSAGE } from '../config/questionnaire';
+import type { Platform } from '../types/state';
 
 interface IWhitelistService {
   isAuthorized(platform: Platform, userId: string): Promise<boolean>;
