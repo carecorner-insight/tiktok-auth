@@ -65,7 +65,6 @@ describe('flow: unauthorized user', () => {
   it('does not present Q1 or call AIBots', async () => {
     const services = makeServices({ isAuthorized: false });
     await processMessage(msg('hi'), services);
-    expect(result => result).toBeDefined();
     expect(services.aiBots.chat).not.toHaveBeenCalled();
   });
 
