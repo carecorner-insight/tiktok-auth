@@ -8,11 +8,18 @@ interface ISessionManager {
 
 export function makeSessionPersister(sessionManager: ISessionManager) {
   return async function sessionPersister(state: CareyBotState): Promise<NodeResult> {
-    if (state.conversationPhase === 'ended') {
-      await sessionManager.clear(state.platform, state.userId);
+    const updatedMessages: CareyBotState['messages'] = state.pendingResponse
+      ? [...state.messages, { role: 'assistant', content: state.pendingResponse, timestamp: Date.now() }]
+      : state.messages;
+
+    const stateToSave = { ...state, messages: updatedMessages };
+
+    if (stateToSave.conversationPhase === 'ended') {
+      await sessionManager.clear(stateToSave.platform, stateToSave.userId);
     } else {
-      await sessionManager.save(state);
+      await sessionManager.save(stateToSave);
     }
-    return {};
+
+    return { messages: updatedMessages };
   };
 }

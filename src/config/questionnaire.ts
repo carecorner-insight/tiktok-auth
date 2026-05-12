@@ -76,5 +76,12 @@ export const UNAUTHORIZED_MESSAGE =
   "To request access, please register at: {REGISTRATION_URL}\n\n" +
   "Your User ID is: {USER_ID}";
 
+export const INTRO_MESSAGE =
+  "Hi! I'm Carey, a digital mental health support assistant for young people aged 13–25 in Singapore.\n\n" +
+  "I'm not a real person, and it's best not to share personal details here.\n\n" +
+  "Before we start, I'd like to ask you a few short questions about how you've been feeling over the past two weeks. " +
+  "Please answer Yes or No to each one.\n\n" +
+  "Ready when you are.";
+
 export const COUNSELLING_URL =
   process.env.COUNSELLING_BOOKING_URL ?? 'https://carecorner-ist.my.site.com/insight/';
