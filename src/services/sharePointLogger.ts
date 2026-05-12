@@ -19,6 +19,8 @@ export class SharePointLogger {
       conversationId: state.conversationId,
       tag: state.tag,
       conversationPhase: state.conversationPhase,
+      questionIndex: state.questionIndex,
+      answers: state.answers,
       userMessage,
       aiResponse,
       timestamp: new Date().toISOString(),

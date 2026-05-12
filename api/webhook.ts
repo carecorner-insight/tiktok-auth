@@ -42,6 +42,31 @@ async function fetchWhitelistStatus(
   }
 }
 
+// ── Per-user processing lock (prevents race conditions on fast replies) ───────
+
+async function withUserLock<T>(
+  redis: RedisClient,
+  platform: string,
+  userId: string,
+  fn: () => Promise<T>,
+): Promise<T | undefined> {
+  const lockKey = `lock:${platform}:${userId}`;
+  const acquired = await redis.set(lockKey, '1', { ex: 30, nx: true });
+
+  if (acquired === null) {
+    // Lock held — wait 2 s and retry once
+    await new Promise(r => setTimeout(r, 2000));
+    const retry = await redis.set(lockKey, '1', { ex: 30, nx: true });
+    if (retry === null) return undefined; // still locked, drop
+  }
+
+  try {
+    return await fn();
+  } finally {
+    await redis.del(lockKey);
+  }
+}
+
 // ── Background message handler ────────────────────────────────────────────────
 
 async function handleMessage(
@@ -66,35 +91,37 @@ async function handleMessage(
     if (isNew === null) return; // duplicate delivery
   }
 
-  const services = {
-    whitelist: new WhitelistService(redis, fetchWhitelistStatus),
-    session: new SessionManager(redis),
-    aiBots: new AIBotsClient(
-      process.env.DIRECTUS_CREATE_CHAT_URL ?? '',
-      process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
-    ),
-  };
+  await withUserLock(redis, msg.platform, msg.userId, async () => {
+    const services = {
+      whitelist: new WhitelistService(redis, fetchWhitelistStatus),
+      session: new SessionManager(redis),
+      aiBots: new AIBotsClient(
+        process.env.DIRECTUS_CREATE_CHAT_URL ?? '',
+        process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
+      ),
+    };
 
-  let result;
-  try {
-    result = await processMessage(msg, services);
-  } catch (err) {
-    console.error('[webhook] processMessage failed:', err);
-    await adapter.sendMessage(
-      msg.userId,
-      "I'm having trouble right now. Please try again in a moment.",
-      msg.conversationId,
-    );
-    return;
-  }
+    let result;
+    try {
+      result = await processMessage(msg, services);
+    } catch (err) {
+      console.error('[webhook] processMessage failed:', err);
+      await adapter.sendMessage(
+        msg.userId,
+        "I'm having trouble right now. Please try again in a moment.",
+        msg.conversationId,
+      );
+      return;
+    }
 
-  await adapter.sendMessage(msg.userId, result.response, msg.conversationId);
+    await adapter.sendMessage(msg.userId, result.response, msg.conversationId);
 
-  const logUrl = process.env.POWER_AUTOMATE_WEBHOOK_URL;
-  if (logUrl) {
-    const logger = new SharePointLogger(logUrl);
-    await logger.log(result.state, msg.text, result.response);
-  }
+    const logUrl = process.env.POWER_AUTOMATE_WEBHOOK_URL;
+    if (logUrl) {
+      const logger = new SharePointLogger(logUrl);
+      await logger.log(result.state, msg.text, result.response);
+    }
+  });
 }
 
 // ── Vercel handler ────────────────────────────────────────────────────────────
