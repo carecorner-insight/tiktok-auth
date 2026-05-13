@@ -4,6 +4,24 @@ import { BaseAdapter } from '../adapters/BaseAdapter.js';
 export class TikTokAdapter extends BaseAdapter {
     constructor() {
         super('tiktok');
+        this.clientSecret = process.env.TIKTOK_CLIENT_SECRET;
+    }
+
+    verifySignature(req) {
+        const signature = req.headers['x-tiktok-signature'];
+
+        const rawBody = JSON.stringify(req.body);
+
+        const expectedSignature = crypto
+            .createHmac('sha256', this.clientSecret)
+            .update(rawBody)
+            .digest('hex');
+        
+        if (signature !== expectedSignature) {
+            throw new Error('Invalid TikTok signature');
+        }
+
+        return true;
     }
 
     parseWebhook(req) {
