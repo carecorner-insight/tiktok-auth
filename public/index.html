@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Authorization</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .success {
+            color: #28a745;
+        }
+        .error {
+            color: #dc3545;
+        }
+        .code-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            word-break: break-all;
+            font-family: monospace;
+        }
+        .copy-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .copy-btn:hover {
+            background: #0056b3;
+        }
+        .info {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TikTok Authorization Callback</h1>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const state = urlParams.get('state');
+        const error = urlParams.get('error');
+        const errorDescription = urlParams.get('error_description');
+        
+        const resultDiv = document.getElementById('result');
+        
+        if (error) {
+            // Handle error case
+            resultDiv.innerHTML = `
+                <h2 class="error">❌ Authorization Failed</h2>
+                <p><strong>Error:</strong> ${error}</p>
+                ${errorDescription ? `<p><strong>Description:</strong> ${errorDescription}</p>` : ''}
+            `;
+        } else if (code) {
+            // Success! Show the authorization code
+            resultDiv.innerHTML = `
+                <h2 class="success">✅ Authorization Successful!</h2>
+                <div class="info">
+                    <p><strong>What to do next:</strong></p>
+                    <p>Copy the authorization code below and use it to get your access token via the TikTok API endpoint: <code>/tt_user/oauth2/token/</code></p>
+                    <p><strong>Note:</strong> This code expires quickly (usually within 10 minutes), so use it soon!</p>
+                </div>
+                
+                <h3>Your Authorization Code:</h3>
+                <div class="code-box" id="codeBox">${code}</div>
+                <button class="copy-btn" onclick="copyCode()">📋 Copy Code</button>
+                
+                ${state ? `
+                    <h3>State Parameter:</h3>
+                    <div class="code-box">${state}</div>
+                ` : ''}
+            `;
+        } else {
+            // No code or error - probably just landing on the page
+            resultDiv.innerHTML = `
+                <h2>⏳ Waiting for Authorization...</h2>
+                <p>This page is ready to receive your TikTok authorization callback.</p>
+                <p>Please complete the authorization process through TikTok.</p>
+            `;
+        }
+        
+        function copyCode() {
+            const codeText = document.getElementById('codeBox').textContent;
+            navigator.clipboard.writeText(codeText).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                btn.textContent = '✅ Copied!';
+                setTimeout(() => {
+                    btn.textContent = '📋 Copy Code';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

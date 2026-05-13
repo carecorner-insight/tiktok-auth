@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Webhook Events</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .webhook-event {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+            position: relative;
+        }
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .event-type {
+            font-weight: bold;
+            color: #007bff;
+            font-size: 16px;
+        }
+        .event-time {
+            color: #666;
+            font-size: 14px;
+        }
+        .event-content {
+            margin-top: 10px;
+        }
+        .event-detail {
+            margin: 5px 0;
+            color: #333;
+        }
+        .event-detail strong {
+            color: #000;
+        }
+        .json-code {
+            background: #282c34;
+            color: #abb2bf;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .badge-text { background: #28a745; color: white; }
+        .badge-image { background: #17a2b8; color: white; }
+        .badge-video { background: #dc3545; color: white; }
+        .badge-other { background: #6c757d; color: white; }
+        .no-events {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .instructions {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .instructions code {
+            background: #fff;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 TikTok Webhook Events</h1>
+        <p class="subtitle">Real-time monitoring of incoming webhook events</p>
+        
+        <div class="info-box">
+            <strong>Webhook URL:</strong> <code id="webhookUrl"></code><br>
+            <small>Configure this URL in your TikTok webhook subscription</small>
+        </div>
+
+        <div class="instructions">
+            <strong>⚠️ Important:</strong> This page shows webhook events logged to your Vercel console. 
+            To see actual webhook data in real-time, you need to:
+            <ol>
+                <li>Deploy this to Vercel</li>
+                <li>Update your TikTok webhook subscription to: <code>https://your-app.vercel.app/api/webhook</code></li>
+                <li>Check your Vercel function logs at: <a href="https://vercel.com" target="_blank">vercel.com</a> → Your Project → Functions → View Logs</li>
+                <li>Send a test message to your TikTok Business Account</li>
+            </ol>
+        </div>
+
+        <h2>Recent Events</h2>
+        <div id="eventsContainer">
+            <div class="no-events">
+                📭 No webhook events received yet.<br>
+                <small>Events will appear here when TikTok sends webhooks to your endpoint.</small>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Set the webhook URL
+        const baseUrl = window.location.origin;
+        document.getElementById('webhookUrl').textContent = `${baseUrl}/api/webhook`;
+
+        // Note: This is a static page. To see real-time events, you would need to:
+        // 1. Store webhook events in a database
+        // 2. Create an API endpoint to fetch them
+        // 3. Use polling or WebSockets to update this page
+        
+        // For now, check your Vercel function logs to see webhook events
+    </script>
+</body>
+</html>
