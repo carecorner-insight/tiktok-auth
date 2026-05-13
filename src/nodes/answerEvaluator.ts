@@ -1,10 +1,18 @@
 import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { getLastUserInput } from '../types/nodes';
-import { RISK_THRESHOLDS } from '../config/questionnaire';
+import { RISK_THRESHOLDS, PHQ9_QUESTIONS } from '../config/questionnaire';
 
 export function answerEvaluator(state: CareyBotState): NodeResult {
   const input = getLastUserInput(state);
+
+  if (input !== 'yes' && input !== 'no') {
+    const question = PHQ9_QUESTIONS[state.questionIndex];
+    return {
+      pendingResponse: `Please reply with Yes or No.\n\n${question.text}\n\nYes / No`,
+    };
+  }
+
   const isYes = input === 'yes';
   const newAnswers = [...state.answers, input];
   const newIndex = state.questionIndex + 1;

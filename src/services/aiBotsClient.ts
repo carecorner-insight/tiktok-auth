@@ -16,8 +16,9 @@ export class AIBotsClient {
     const response = await this.fetch(this.createChatUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'azure~openai.gpt-4o-chat' }),
-    });
+      body: JSON.stringify({ model: 'azure~openai.gpt-5-2-chat' }),
+      signal: AbortSignal.timeout(10000),
+    } as RequestInit);
 
     if (!response.ok) {
       throw new Error(`AIBots createChat failed: ${response.status}`);
@@ -33,15 +34,17 @@ export class AIBotsClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: text, chat_id: chatId }),
-    });
+      signal: AbortSignal.timeout(50000),
+    } as RequestInit);
 
     if (!response.ok) {
       throw new Error(`AIBots sendMessage failed: ${response.status}`);
     }
 
     const data = (await response.json()) as { response?: { content?: string } | string };
-    if (typeof data.response === 'object' && data.response?.content) return data.response.content;
-    if (typeof data.response === 'string' && data.response) return data.response;
+    if (data.response && typeof data.response === 'object' && data.response.content) return data.response.content;
+    if (data.response && typeof data.response === 'string') return data.response;
+    console.warn('[AIBots] Unexpected response format:', JSON.stringify(data));
     throw new Error('AIBots sendMessage: unexpected response format');
   }
 

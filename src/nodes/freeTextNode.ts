@@ -1,4 +1,4 @@
-import type { CareyBotState, Message } from '../types/state';
+import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { getLastUserInput } from '../types/nodes';
 
@@ -19,11 +19,8 @@ export function makeFreeTextNode(aiBotsClient: IAIBotsClient) {
       ? result.reply.trimStart().slice(CRISIS_PREFIX.length).trimStart()
       : result.reply;
 
-    const assistantMsg: Message = { role: 'assistant', content: cleanReply, timestamp: Date.now() };
-
     return {
       aiBotChatId: result.chatId,
-      messages: [...state.messages, assistantMsg],
       pendingResponse: cleanReply,
       ...(isCrisis && { crisisDetected: true, conversationPhase: 'ended' }),
     };

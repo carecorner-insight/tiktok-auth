@@ -113,6 +113,7 @@ export function buildGraph(services: GraphServices) {
     .addConditionalEdges('authGuard', routeFromAuth, {
       questionnaireNode:    'questionnaireNode',
       answerEvaluator:      'answerEvaluator',
+      menuPresenter:        'menuPresenter',
       optionRouter:         'optionRouter',
       freeTextNode:         'freeTextNode',
       wellbeingCheckNode:   'wellbeingCheckNode',

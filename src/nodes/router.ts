@@ -1,4 +1,5 @@
 import type { CareyBotState } from '../types/state';
+import { getLastUserInput } from '../types/nodes';
 
 const OPTION_NODE: Record<number, string> = {
   1: 'freeTextNode',
@@ -7,13 +8,12 @@ const OPTION_NODE: Record<number, string> = {
   4: 'resourceRedirectNode',
 };
 
+const MENU_KEYWORDS = new Set(['menu', 'back', 'back to menu', 'change', 'options']);
+
 export function router(state: CareyBotState): string {
   const { conversationPhase, selectedOption } = state;
 
   if (conversationPhase === 'questionnaire') {
-    // If the last assistant message was a Yes/No question, the user's
-    // current message is an answer to it — evaluate it.
-    // Otherwise, present the next question.
     const lastAssistant = [...state.messages]
       .reverse()
       .find(m => m.role === 'assistant');
@@ -24,6 +24,7 @@ export function router(state: CareyBotState): string {
   if (conversationPhase === 'menu') return 'optionRouter';
 
   if (conversationPhase === 'option' && selectedOption) {
+    if (MENU_KEYWORDS.has(getLastUserInput(state))) return 'menuPresenter';
     return OPTION_NODE[selectedOption] ?? 'optionRouter';
   }
 
