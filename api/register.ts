@@ -35,9 +35,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const webhookUrl = process.env.POWER_AUTOMATE_WEBHOOK_URL;
+  const webhookUrl = process.env.REGISTRATION_WEBHOOK_URL;
   if (!webhookUrl) {
-    console.error('[register] POWER_AUTOMATE_WEBHOOK_URL is not set');
+    console.error('[register] REGISTRATION_WEBHOOK_URL is not set');
     return res.status(503).json({ error: 'Registration service unavailable' });
   }
 
