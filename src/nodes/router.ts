@@ -1,5 +1,6 @@
 import type { CareyBotState } from '../types/state';
 import { getLastUserInput } from '../types/nodes';
+import { TOTAL_QUESTIONS } from '../config/questionnaire';
 
 const OPTION_NODE: Record<number, string> = {
   1: 'freeTextNode',
@@ -22,6 +23,8 @@ export function router(state: CareyBotState): string {
   }
 
   if (conversationPhase === 'questionnaire') {
+    // Stale session guard: if all questions already answered, go straight to menu
+    if (state.questionIndex >= TOTAL_QUESTIONS) return 'menuPresenter';
     const lastAssistant = [...state.messages]
       .reverse()
       .find(m => m.role === 'assistant');
