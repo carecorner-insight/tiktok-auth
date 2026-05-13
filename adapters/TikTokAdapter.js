@@ -50,7 +50,7 @@ export class TikTokAdapter extends BaseAdapter {
     async sendMessage(userId, conversationId, message) {
         const url = 'https://business-api.tiktok.com/open_api/v1.3/business/message/send/';
         const dynamicToken = await redis.get('tiktok_access_token');
-        console.log('Sending TikTok message, length:', messageText.length);
+        console.log('Sending TikTok message, length:', message.length);
 
         const payload = {
             business_id: userId,
