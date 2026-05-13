@@ -9,6 +9,7 @@ import { emergencyHandler } from '../nodes/emergencyHandler';
 import { menuPresenter } from '../nodes/menuPresenter';
 import { optionRouter } from '../nodes/optionRouter';
 import { resourceRedirectNode } from '../nodes/resourceRedirectNode';
+import { restartNode } from '../nodes/restartNode';
 
 import { makeAuthGuard } from '../nodes/authGuard';
 import { makeFreeTextNode } from '../nodes/freeTextNode';
@@ -95,6 +96,7 @@ export function buildGraph(services: GraphServices) {
 
     // ── Nodes ──
     .addNode('authGuard',            authGuard)
+    .addNode('restartNode',          restartNode)
     .addNode('questionnaireNode',    questionnaireNode)
     .addNode('answerEvaluator',      answerEvaluator)
     .addNode('emergencyHandler',     emergencyHandler)
@@ -111,6 +113,7 @@ export function buildGraph(services: GraphServices) {
 
     // ── Auth check → dispatch by phase, or END for unauthorized ──
     .addConditionalEdges('authGuard', routeFromAuth, {
+      restartNode:          'restartNode',
       questionnaireNode:    'questionnaireNode',
       answerEvaluator:      'answerEvaluator',
       menuPresenter:        'menuPresenter',
@@ -140,6 +143,7 @@ export function buildGraph(services: GraphServices) {
     })
 
     // ── All terminal nodes → sessionPersister → END ──
+    .addEdge('restartNode',          'sessionPersister')
     .addEdge('questionnaireNode',    'sessionPersister')
     .addEdge('emergencyHandler',     'sessionPersister')
     .addEdge('menuPresenter',        'sessionPersister')

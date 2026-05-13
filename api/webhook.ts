@@ -107,28 +107,27 @@ async function handleMessage(
       ),
     };
 
+    const logUrl = process.env.POWER_AUTOMATE_WEBHOOK_URL;
+    const logger = logUrl ? new SharePointLogger(logUrl) : null;
+
     let result;
+    let responseText = "I'm having trouble right now. Please try again in a moment.";
     try {
       result = await processMessage(msg, services);
+      responseText = result.response;
     } catch (err) {
       console.error('[webhook] processMessage failed:', err);
-      await adapter.sendMessage(
-        msg.userId,
-        "I'm having trouble right now. Please try again in a moment.",
-        msg.conversationId,
-      );
+      await adapter.sendMessage(msg.userId, responseText, msg.conversationId);
+      if (logger) {
+        const fallbackState = await services.session.load(msg.platform, msg.userId);
+        if (fallbackState) void logger.log(fallbackState, msg.text, responseText);
+      }
       return;
     }
 
     await adapter.sendMessage(msg.userId, result.response, msg.conversationId);
 
-    const tLog = Date.now();
-    const logUrl = process.env.POWER_AUTOMATE_WEBHOOK_URL;
-    if (logUrl) {
-      const logger = new SharePointLogger(logUrl);
-      await logger.log(result.state, msg.text, result.response);
-    }
-    console.log(`[perf] sharepoint log: ${Date.now() - tLog}ms`);
+    if (logger) void logger.log(result.state, msg.text, result.response);
     console.log(`[perf] handleMessage total: ${Date.now() - tTotal}ms`);
   });
 }

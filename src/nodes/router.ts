@@ -13,6 +13,8 @@ const MENU_KEYWORDS = new Set(['menu', 'back', 'back to menu', 'change', 'option
 export function router(state: CareyBotState): string {
   const { conversationPhase, selectedOption } = state;
 
+  if (getLastUserInput(state) === '/restart') return 'restartNode';
+
   if (conversationPhase === 'questionnaire') {
     const lastAssistant = [...state.messages]
       .reverse()
