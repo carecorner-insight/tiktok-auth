@@ -18,15 +18,18 @@ export async function processMessage(
   msg: NormalizedMessage,
   services: RunnerServices,
 ): Promise<RunResult> {
-  // Load existing session or start fresh
+  const t0 = Date.now();
+
+  const t1 = Date.now();
   const existing = await services.session.load(msg.platform, msg.userId);
+  console.log(`[perf] session.load: ${Date.now() - t1}ms`);
+
   const base: CareyBotState = existing ?? initialState(
     msg.platform,
     msg.userId,
     msg.conversationId ?? '',
   );
 
-  // Append the incoming user message to history
   const stateWithMsg: CareyBotState = {
     ...base,
     messages: [
@@ -35,8 +38,15 @@ export async function processMessage(
     ],
   };
 
+  const t2 = Date.now();
   const graph = buildGraph(services);
+  console.log(`[perf] buildGraph+compile: ${Date.now() - t2}ms`);
+
+  const t3 = Date.now();
   const final = await graph.invoke(stateWithMsg) as CareyBotState;
+  console.log(`[perf] graph.invoke: ${Date.now() - t3}ms`);
+
+  console.log(`[perf] processMessage total: ${Date.now() - t0}ms`);
 
   return {
     response: final.pendingResponse ?? '',

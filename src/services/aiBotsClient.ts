@@ -13,12 +13,14 @@ export class AIBotsClient {
   ) {}
 
   async createChat(): Promise<string> {
+    const t = Date.now();
     const response = await this.fetch(this.createChatUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: 'azure~openai.gpt-5-2-chat' }),
       signal: AbortSignal.timeout(10000),
     } as RequestInit);
+    console.log(`[perf] AIBots createChat: ${Date.now() - t}ms, status: ${response.status}`);
 
     if (!response.ok) {
       throw new Error(`AIBots createChat failed: ${response.status}`);
@@ -30,21 +32,23 @@ export class AIBotsClient {
   }
 
   async sendMessage(chatId: string, text: string): Promise<string> {
+    const t = Date.now();
     const response = await this.fetch(this.sendMessageUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: text, chat_id: chatId }),
       signal: AbortSignal.timeout(50000),
     } as RequestInit);
+    console.log(`[perf] AIBots sendMessage: ${Date.now() - t}ms, status: ${response.status}`);
 
     if (!response.ok) {
       throw new Error(`AIBots sendMessage failed: ${response.status}`);
     }
 
     const data = (await response.json()) as { response?: { content?: string } | string };
+    console.log(`[perf] AIBots sendMessage raw response: ${JSON.stringify(data)}`);
     if (data.response && typeof data.response === 'object' && data.response.content) return data.response.content;
     if (data.response && typeof data.response === 'string') return data.response;
-    console.warn('[AIBots] Unexpected response format:', JSON.stringify(data));
     throw new Error('AIBots sendMessage: unexpected response format');
   }
 

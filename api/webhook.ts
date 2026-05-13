@@ -74,6 +74,8 @@ async function handleMessage(
   body: unknown,
   redis: RedisClient,
 ): Promise<void> {
+  const tTotal = Date.now();
+
   // Normalize — throws for bot messages, non-text, unsupported events
   let msg;
   try {
@@ -84,14 +86,18 @@ async function handleMessage(
 
   // Idempotency dedup on platform message ID
   if (msg.messageId) {
+    const tDedup = Date.now();
     const isNew = await redis.set(`dedup:${msg.platform}:${msg.messageId}`, 1, {
       ex: 3600,
       nx: true,
     });
+    console.log(`[perf] dedup check: ${Date.now() - tDedup}ms`);
     if (isNew === null) return; // duplicate delivery
   }
 
+  const tLock = Date.now();
   await withUserLock(redis, msg.platform, msg.userId, async () => {
+    console.log(`[perf] lock acquire: ${Date.now() - tLock}ms`);
     const services = {
       whitelist: new WhitelistService(redis, fetchWhitelistStatus),
       session: new SessionManager(redis),
@@ -116,11 +122,14 @@ async function handleMessage(
 
     await adapter.sendMessage(msg.userId, result.response, msg.conversationId);
 
+    const tLog = Date.now();
     const logUrl = process.env.POWER_AUTOMATE_WEBHOOK_URL;
     if (logUrl) {
       const logger = new SharePointLogger(logUrl);
       await logger.log(result.state, msg.text, result.response);
     }
+    console.log(`[perf] sharepoint log: ${Date.now() - tLog}ms`);
+    console.log(`[perf] handleMessage total: ${Date.now() - tTotal}ms`);
   });
 }
 
