@@ -8,7 +8,7 @@ type FetchWhitelistFn = (
   userId: string,
 ) => Promise<WhitelistStatus | null>;
 
-const CACHE_TTL_SECONDS = 300; // 5 minutes
+const CACHE_TTL_SECONDS = 30; // 5 minutes
 
 export class WhitelistService {
   constructor(
