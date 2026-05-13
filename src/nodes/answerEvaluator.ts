@@ -1,7 +1,7 @@
 import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { getLastUserInput } from '../types/nodes';
-import { RISK_THRESHOLDS, PHQ9_QUESTIONS } from '../config/questionnaire';
+import { RISK_THRESHOLDS, PHQ9_QUESTIONS, TOTAL_QUESTIONS } from '../config/questionnaire';
 
 export function answerEvaluator(state: CareyBotState): NodeResult {
   const input = getLastUserInput(state);
@@ -28,15 +28,15 @@ export function answerEvaluator(state: CareyBotState): NodeResult {
     };
   }
 
-  // Questions 2–8 still in progress — just record and advance
-  if (newIndex < 9) {
+  // More questions remain — record and advance
+  if (newIndex < TOTAL_QUESTIONS) {
     return {
       answers: newAnswers,
       questionIndex: newIndex,
     };
   }
 
-  // All 9 questions answered — tabulate Q2–Q9 (indices 1–8)
+  // All questions answered — tabulate Q2–Q4 (indices 1 to TOTAL_QUESTIONS-1)
   const tabScore = newAnswers.slice(1).filter(a => a === 'yes').length;
   const tag =
     tabScore >= RISK_THRESHOLDS.high   ? 'high'   :

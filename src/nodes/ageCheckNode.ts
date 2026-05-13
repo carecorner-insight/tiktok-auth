@@ -6,16 +6,6 @@ const AGE_CHECK_MESSAGE =
   "I'm not a real person, and it's best not to share personal details here.\n\n" +
   "Before we start, are you between 13 and 25 years old?\n\nYes / No";
 
-export function restartNode(_state: CareyBotState): NodeResult {
-  return {
-    questionIndex: 0,
-    answers: [],
-    tag: null,
-    conversationPhase: 'ageCheck',
-    selectedOption: null,
-    messages: [],
-    pendingResponse: AGE_CHECK_MESSAGE,
-    crisisDetected: false,
-    aiBotChatId: null,
-  };
+export function ageCheckNode(_state: CareyBotState): NodeResult {
+  return { pendingResponse: AGE_CHECK_MESSAGE };
 }

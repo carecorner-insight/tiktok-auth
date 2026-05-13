@@ -3,6 +3,7 @@ export type Platform = 'tiktok' | 'telegram';
 export type tag = 'low' | 'medium' | 'high';
 
 export type ConversationPhase =
+  | 'ageCheck'
   | 'questionnaire'
   | 'menu'
   | 'option'
@@ -59,7 +60,7 @@ export const initialState = (
   questionIndex: 0,
   answers: [],
   tag: null,
-  conversationPhase: 'questionnaire',
+  conversationPhase: 'ageCheck',
   selectedOption: null,
   messages: [],
   pendingResponse: null,

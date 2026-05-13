@@ -28,40 +28,15 @@ export const PHQ9_QUESTIONS: Question[] = [
     text: 'Over the past two weeks, have you had trouble falling or staying asleep, or sleeping too much?',
     isHighRiskTrigger: false,
   },
-  {
-    id: 5,
-    text: 'Over the past two weeks, have you often felt tired or had little energy?',
-    isHighRiskTrigger: false,
-  },
-  {
-    id: 6,
-    text: 'Over the past two weeks, have you had a poor appetite or been overeating?',
-    isHighRiskTrigger: false,
-  },
-  {
-    id: 7,
-    text: 'Over the past two weeks, have you felt bad about yourself — or that you are a failure or have let yourself or your family down?',
-    isHighRiskTrigger: false,
-  },
-  {
-    id: 8,
-    text: 'Over the past two weeks, have you had trouble concentrating on things, such as reading the newspaper or watching television?',
-    isHighRiskTrigger: false,
-  },
-  {
-    id: 9,
-    text: 'Over the past two weeks, have you been moving or speaking so slowly that other people could have noticed? Or the opposite — being so fidgety or restless that you have been moving around a lot more than usual?',
-    isHighRiskTrigger: false,
-  },
 ];
 
 export const TOTAL_QUESTIONS = PHQ9_QUESTIONS.length;
 
-// Risk thresholds for tabulated score (Q2–Q9, max score = 8)
+// Risk thresholds for tabulated score (Q2–Q4, max score = 3)
 export const RISK_THRESHOLDS = {
-  high: 6,    // 6–8 yes answers
-  medium: 3,  // 3–5 yes answers
-  // 0–2 = low
+  high: 2,    // 2–3 yes answers
+  medium: 1,  // 1 yes answer
+  // 0 = low
 } as const;
 
 export const MENU_TEXT = `Thanks for answering that.\n\nWhat would feel most helpful right now?\n\n1. Talk about something that's been bothering me\n2. Do a quick wellbeing self-check\n3. Learn ways to manage stress\n4. Find support / resources`;
@@ -76,12 +51,6 @@ export const UNAUTHORIZED_MESSAGE =
   "To request access, please register at: {REGISTRATION_URL}\n\n" +
   "Your User ID is: {USER_ID}";
 
-export const INTRO_MESSAGE =
-  "Hi! I'm Carey, a digital mental health support assistant for young people aged 13–25 in Singapore.\n\n" +
-  "I'm not a real person, and it's best not to share personal details here.\n\n" +
-  "Before we start, I'd like to ask you a few short questions about how you've been feeling over the past two weeks. " +
-  "Please answer Yes or No to each one.\n\n" +
-  "Ready when you are.";
 
 export const COUNSELLING_URL =
   process.env.COUNSELLING_BOOKING_URL ?? 'https://carecorner-ist.my.site.com/insight/';

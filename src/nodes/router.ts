@@ -15,6 +15,12 @@ export function router(state: CareyBotState): string {
 
   if (getLastUserInput(state) === '/restart') return 'restartNode';
 
+  if (conversationPhase === 'ageCheck') {
+    const lastAssistant = [...state.messages].reverse().find(m => m.role === 'assistant');
+    const awaitingAnswer = lastAssistant?.content.includes('Yes / No') ?? false;
+    return awaitingAnswer ? 'ageGateNode' : 'ageCheckNode';
+  }
+
   if (conversationPhase === 'questionnaire') {
     const lastAssistant = [...state.messages]
       .reverse()
