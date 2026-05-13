@@ -79,6 +79,38 @@ export class TikTokAdapter extends BaseAdapter {
         console.log('TikTok message sent');
             return data;
         }
+    async sendTypingIndicator(businessId, conversationId) {
+        const url = 'https://business-api.tiktok.com/open_api/v1.3/business/message/send/';
+        const dynamicToken = await redis.get('tiktok_access_token');
 
+        const payload = {
+            business_id: businessId,
+            recipient_type: "CONVERSATION",
+            recipient: conversationId,
+            message_type: "SENDER_ACTION",
+            sender_action: "TYPING"
+        };
+
+        try {
+            const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Token': dynamicToken
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(5000),
+            });
+
+            const data = await response.json();
+            if (data.code === 0) {
+            console.log('✅ Typing indicator sent');
+            } else {
+            console.log('⚠️ Typing indicator failed (non-critical):', data.message);
+            }
+        } catch (error) {
+            console.log('⚠️ Typing indicator error (non-critical):', error.message);
+        }
+    }
 
 }
