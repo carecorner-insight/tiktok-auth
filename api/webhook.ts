@@ -24,20 +24,41 @@ async function fetchWhitelistStatus(
   userId: string,
 ): Promise<WhitelistStatus | null> {
   const url = process.env.SHAREPOINT_WHITELIST_WEBHOOK_URL;
-  if (!url) return null;
+  if (!url) {
+    console.warn('[whitelist] SHAREPOINT_WHITELIST_WEBHOOK_URL is not set — all users will be denied');
+    return null;
+  }
+
+  const normalizedPlatform = platform.toLowerCase().trim();
+  const normalizedUserId = userId.trim();
+  console.log(`[whitelist] checking: platform=${normalizedPlatform} userId=${normalizedUserId}`);
 
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ platform, userId }),
+      body: JSON.stringify({ platform: normalizedPlatform, userId: normalizedUserId }),
     });
-    if (!res.ok) return null;
+
+    console.log(`[whitelist] response status: ${res.status}`);
+
+    if (!res.ok) {
+      console.error(`[whitelist] Power Automate returned HTTP ${res.status}`);
+      return null;
+    }
+
     const data = (await res.json()) as { status?: string };
-    const s = data.status;
+    console.log(`[whitelist] raw response: ${JSON.stringify(data)}`);
+
+    const s = data.status?.toLowerCase().trim();
+    console.log(`[whitelist] normalised status: "${s}"`);
+
     if (s === 'approved' || s === 'pending') return s;
+
+    console.warn(`[whitelist] unrecognised status value: "${s}"`);
     return null;
-  } catch {
+  } catch (err) {
+    console.error('[whitelist] fetch error:', err);
     return null;
   }
 }
