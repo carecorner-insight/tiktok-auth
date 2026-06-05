@@ -21,7 +21,7 @@ export const makeCompletedQuestionnaireState = (
   overrides: Partial<CareyBotState> = {},
 ) =>
   makeState({
-    questionIndex: 9,
+    questionIndex: 4,
     answers,
     conversationPhase: 'menu',
     ...overrides,
@@ -61,18 +61,20 @@ export const makeAIBotsClientMock = (reply = 'I hear you. Can you tell me more?'
 });
 
 // ── Answer helpers ───────────────────────────────────────────────────────────
+// 4 questions total: Q1 (suicidal ideation) + Q2–Q4 (tabulated, max score=3)
+// RISK_THRESHOLDS: high ≥ 2, medium ≥ 1, else low
 
-/** All-no answers — Q1 (suicidal) = no, Q2–Q9 all no → low risk */
-export const ALL_NO_ANSWERS = Array(9).fill('no');
+/** All-no answers — Q1 = no, Q2–Q4 all no → low risk */
+export const ALL_NO_ANSWERS = ['no', 'no', 'no', 'no'];
 
-/** High risk via Q1 (suicidal ideation) */
-export const SUICIDAL_YES_ANSWERS = ['yes', ...Array(8).fill('no')];
+/** High risk via Q1 (suicidal ideation) — immediate high regardless of Q2–Q4 */
+export const SUICIDAL_YES_ANSWERS = ['yes', 'no', 'no', 'no'];
 
-/** High risk via tabulation — 6 yes answers in Q2–Q9 */
-export const HIGH_TAB_ANSWERS = ['no', ...Array(6).fill('yes'), ...Array(2).fill('no')];
+/** High risk via tabulation — 2 yes answers in Q2–Q4 (score ≥ 2) */
+export const HIGH_TAB_ANSWERS = ['no', 'yes', 'yes', 'no'];
 
-/** Medium risk — 3 yes answers in Q2–Q9 */
-export const MEDIUM_TAB_ANSWERS = ['no', ...Array(3).fill('yes'), ...Array(5).fill('no')];
+/** Medium risk — 1 yes answer in Q2–Q4 (score = 1) */
+export const MEDIUM_TAB_ANSWERS = ['no', 'yes', 'no', 'no'];
 
-/** Low risk — 2 yes answers in Q2–Q9 */
-export const LOW_TAB_ANSWERS = ['no', ...Array(2).fill('yes'), ...Array(6).fill('no')];
+/** Low risk — 0 yes answers in Q2–Q4 (score = 0) */
+export const LOW_TAB_ANSWERS = ['no', 'no', 'no', 'no'];

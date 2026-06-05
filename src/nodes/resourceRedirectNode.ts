@@ -9,7 +9,6 @@ export function resourceRedirectNode(_state: CareyBotState): NodeResult {
       `📅 Book a counselling session: ${COUNSELLING_URL}\n\n` +
       `You can also reach out to someone you trust, or contact a crisis line if you need immediate support.\n\n` +
       `Feel free to keep chatting, or type *menu* to see other support options.`,
-    conversationPhase: 'option',
-    selectedOption: 1,
+    conversationPhase: 'ended',
   };
 }

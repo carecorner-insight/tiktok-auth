@@ -13,8 +13,7 @@ export function makeWellbeingCheckNode(aiBotsClient: IAIBotsClient) {
     return {
       aiBotChatId: result.chatId,
       pendingResponse: result.reply,
-      conversationPhase: 'option',
-      selectedOption: 1,
+      conversationPhase: 'ended',
     };
   };
 }

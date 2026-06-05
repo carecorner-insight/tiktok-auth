@@ -1,6 +1,7 @@
 import { StateGraph, Annotation, END, START } from '@langchain/langgraph';
 import type { CareyBotState, Platform, ConversationPhase, MenuOption, Message } from '../types/state';
 import type { tag } from '../types/state';
+import { TOTAL_QUESTIONS } from '../config/questionnaire';
 
 import { router } from '../nodes/router';
 import { questionnaireNode } from '../nodes/questionnaireNode';
@@ -70,7 +71,7 @@ function routeFromAuth(state: typeof GraphAnnotation.State): string {
 
 function routeFromAnswerEvaluator(state: typeof GraphAnnotation.State): string {
   if (state.tag === 'high') return 'emergencyHandler';
-  if (state.questionIndex < 9) return 'questionnaireNode';
+  if (state.questionIndex < TOTAL_QUESTIONS) return 'questionnaireNode';
   return 'menuPresenter';
 }
 
