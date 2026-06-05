@@ -65,25 +65,38 @@ const GraphAnnotation = Annotation.Root({
 // After auth check, call the router directly to get the target node.
 // Unauthorized users end here; authorized users are dispatched by phase.
 function routeFromAuth(state: typeof GraphAnnotation.State): string {
-  if (!state.isAuthorized) return END;
-  return router(state as CareyBotState);
+  if (!state.isAuthorized) {
+    console.log('[route] auth → END (unauthorized)');
+    return END;
+  }
+  const next = router(state as CareyBotState);
+  console.log(`[route] auth → ${next}`);
+  return next;
 }
 
 function routeFromAnswerEvaluator(state: typeof GraphAnnotation.State): string {
-  if (state.tag === 'high') return 'emergencyHandler';
-  if (state.questionIndex < TOTAL_QUESTIONS) return 'questionnaireNode';
-  return 'menuPresenter';
+  const next =
+    state.tag === 'high'                        ? 'emergencyHandler'  :
+    state.questionIndex < TOTAL_QUESTIONS       ? 'questionnaireNode' :
+                                                  'menuPresenter';
+  console.log(`[route] answerEvaluator → ${next} (tag=${state.tag}, questionIndex=${state.questionIndex})`);
+  return next;
 }
 
 function routeFromOptionRouter(state: typeof GraphAnnotation.State): string {
-  if (!state.selectedOption) return 'sessionPersister'; // invalid selection
+  if (!state.selectedOption) {
+    console.log('[route] optionRouter → sessionPersister (invalid selection)');
+    return 'sessionPersister';
+  }
   const map: Record<number, string> = {
     1: 'freeTextNode',
     2: 'wellbeingCheckNode',
     3: 'stressManagementNode',
     4: 'resourceRedirectNode',
   };
-  return map[state.selectedOption];
+  const next = map[state.selectedOption];
+  console.log(`[route] optionRouter → ${next} (selectedOption=${state.selectedOption})`);
+  return next;
 }
 
 // ── Graph builder ─────────────────────────────────────────────────────────────
