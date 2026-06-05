@@ -46,7 +46,6 @@ export class AIBotsClient {
     }
 
     const data = (await response.json()) as { response?: { content?: string } | string };
-    console.log(`[perf] AIBots sendMessage raw response: ${JSON.stringify(data)}`);
     if (data.response && typeof data.response === 'object' && data.response.content) return data.response.content;
     if (data.response && typeof data.response === 'string') return data.response;
     throw new Error('AIBots sendMessage: unexpected response format');

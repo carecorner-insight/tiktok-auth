@@ -30,6 +30,17 @@ export async function processMessage(
     msg.conversationId ?? '',
   );
 
+  console.log('[debug] incoming msg:', JSON.stringify(msg.text));
+  console.log('[debug] state BEFORE graph:', JSON.stringify({
+    conversationPhase: base.conversationPhase,
+    questionIndex:     base.questionIndex,
+    selectedOption:    base.selectedOption,
+    tag:               base.tag,
+    crisisDetected:    base.crisisDetected,
+    aiBotChatId:       base.aiBotChatId,
+    messageCount:      base.messages.length,
+  }));
+
   const stateWithMsg: CareyBotState = {
     ...base,
     messages: [
@@ -45,6 +56,15 @@ export async function processMessage(
   const t3 = Date.now();
   const final = await graph.invoke(stateWithMsg) as CareyBotState;
   console.log(`[perf] graph.invoke: ${Date.now() - t3}ms`);
+
+  console.log('[debug] state AFTER graph:', JSON.stringify({
+    conversationPhase: final.conversationPhase,
+    questionIndex:     final.questionIndex,
+    selectedOption:    final.selectedOption,
+    tag:               final.tag,
+    crisisDetected:    final.crisisDetected,
+    pendingResponse:   final.pendingResponse?.slice(0, 80),
+  }));
 
   console.log(`[perf] processMessage total: ${Date.now() - t0}ms`);
 
