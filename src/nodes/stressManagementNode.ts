@@ -9,11 +9,12 @@ interface IAIBotsClient {
 export function makeStressManagementNode(aiBotsClient: IAIBotsClient) {
   return async function stressManagementNode(state: CareyBotState): Promise<NodeResult> {
     const userText = getLastUserInput(state);
-    const result = await aiBotsClient.chat(state.aiBotChatId, userText);
+    const result = await aiBotsCli  ent.chat(state.aiBotChatId, userText);
     return {
       aiBotChatId: result.chatId,
       pendingResponse: result.reply,
-      conversationPhase: 'ended',
+      selectedOption: 3,
+      conversationPhase: 'option',
     };
   };
 }
