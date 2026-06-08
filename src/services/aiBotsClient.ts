@@ -51,15 +51,26 @@ export class AIBotsClient {
     throw new Error('AIBots sendMessage: unexpected response format');
   }
 
-  async chat(chatId: string | null, text: string): Promise<ChatResult> {
+  async chat(chatId: string | null, text: string, primeMessage?: string): Promise<ChatResult> {
+    const isNewSession = chatId === null;
     let activeChatId = chatId ?? await this.createChat();
+
+    // Prime new sessions so AIBots skips its own triage/screener and starts
+    // at the correct state — reply is discarded (it's context-setting only).
+    if (isNewSession && primeMessage) {
+      await this.sendMessage(activeChatId, primeMessage);
+    }
 
     try {
       const reply = await this.sendMessage(activeChatId, text);
       return { reply, chatId: activeChatId };
     } catch {
-      // Stale chatId (AIBots restarted) — create a fresh session and retry once
+      // Stale chatId (AIBots restarted) — create a fresh session and retry once.
+      // Re-prime if we have a primeMessage so the new session also has context.
       activeChatId = await this.createChat();
+      if (primeMessage) {
+        await this.sendMessage(activeChatId, primeMessage);
+      }
       const reply = await this.sendMessage(activeChatId, text);
       return { reply, chatId: activeChatId };
     }

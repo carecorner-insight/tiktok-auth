@@ -32,7 +32,7 @@ interface ISessionManager {
 }
 
 interface IAIBotsClient {
-  chat(chatId: string | null, text: string): Promise<{ reply: string; chatId: string }>;
+  chat(chatId: string | null, text: string, primeMessage?: string): Promise<{ reply: string; chatId: string }>;
 }
 
 export interface GraphServices {

@@ -13,6 +13,24 @@ const stateWithUserMessage = (text: string) =>
 
 const aiReply = (text: string) => ({ reply: text, chatId: 'mock-chat-id' });
 
+// ── priming helpers ───────────────────────────────────────────────────────────
+
+const stateNoSession = (text: string) =>
+  makeState({
+    conversationPhase: 'option',
+    aiBotChatId: null,
+    tag: 'low',
+    messages: [{ role: 'user', content: text, timestamp: Date.now() }],
+  });
+
+const stateExistingSession = (text: string) =>
+  makeState({
+    conversationPhase: 'option',
+    aiBotChatId: 'existing-session-id',
+    tag: 'low',
+    messages: [{ role: 'user', content: text, timestamp: Date.now() }],
+  });
+
 // ── freeTextNode ─────────────────────────────────────────────────────────────
 
 describe('freeTextNode', () => {
@@ -68,7 +86,26 @@ describe('freeTextNode', () => {
     const node = makeFreeTextNode(aiMock);
     const state = makeState({ conversationPhase: 'option', aiBotChatId: 'existing-id' });
     await node(state);
-    expect(aiMock.chat).toHaveBeenCalledWith('existing-id', expect.any(String));
+    expect(aiMock.chat).toHaveBeenCalledWith('existing-id', expect.any(String), undefined);
+  });
+
+  it('passes a primeMessage when aiBotChatId is null (new session)', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue(aiReply('Hi'));
+    const node = makeFreeTextNode(aiMock);
+    await node(stateNoSession('hello'));
+    const [, , primeMessage] = aiMock.chat.mock.calls[0];
+    expect(primeMessage).toBeTruthy();
+    expect(primeMessage).toContain('State 2B');
+  });
+
+  it('does NOT pass a primeMessage when aiBotChatId already exists', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue(aiReply('Hi'));
+    const node = makeFreeTextNode(aiMock);
+    await node(stateExistingSession('follow-up'));
+    const [, , primeMessage] = aiMock.chat.mock.calls[0];
+    expect(primeMessage).toBeUndefined();
   });
 });
 
@@ -98,6 +135,24 @@ describe('wellbeingCheckNode', () => {
     const result = await node(stateWithUserMessage('hi'));
     expect(result.aiBotChatId).toBe('wb-chat-id');
   });
+
+  it('passes a primeMessage referencing State 2A when aiBotChatId is null', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue(aiReply('Hi'));
+    const node = makeWellbeingCheckNode(aiMock);
+    await node(stateNoSession('start'));
+    const [, , primeMessage] = aiMock.chat.mock.calls[0];
+    expect(primeMessage).toContain('State 2A');
+  });
+
+  it('does NOT pass a primeMessage when aiBotChatId already exists', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue(aiReply('Hi'));
+    const node = makeWellbeingCheckNode(aiMock);
+    await node(stateExistingSession('more'));
+    const [, , primeMessage] = aiMock.chat.mock.calls[0];
+    expect(primeMessage).toBeUndefined();
+  });
 });
 
 // ── stressManagementNode ─────────────────────────────────────────────────────
@@ -117,6 +172,24 @@ describe('stressManagementNode', () => {
     const node = makeStressManagementNode(aiMock);
     const result = await node(stateWithUserMessage('ok'));
     expect(result.conversationPhase).toBe('ended');
+  });
+
+  it('passes a primeMessage referencing State 4 when aiBotChatId is null', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue(aiReply('Hi'));
+    const node = makeStressManagementNode(aiMock);
+    await node(stateNoSession('help me'));
+    const [, , primeMessage] = aiMock.chat.mock.calls[0];
+    expect(primeMessage).toContain('State 4');
+  });
+
+  it('does NOT pass a primeMessage when aiBotChatId already exists', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue(aiReply('Hi'));
+    const node = makeStressManagementNode(aiMock);
+    await node(stateExistingSession('more'));
+    const [, , primeMessage] = aiMock.chat.mock.calls[0];
+    expect(primeMessage).toBeUndefined();
   });
 });
 
