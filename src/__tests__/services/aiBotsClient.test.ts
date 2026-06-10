@@ -94,3 +94,56 @@ describe('AIBotsClient.chat', () => {
     expect(result.reply).toBe('Recovered');
   });
 });
+
+describe('AIBotsClient.chat — session priming', () => {
+  it('sends primeMessage before user message when chatId is null', async () => {
+    mockFetch
+      .mockResolvedValueOnce(mockCreate('new-chat'))   // createChat
+      .mockResolvedValueOnce(mockSend('OK noted'))     // primeMessage reply (discarded)
+      .mockResolvedValueOnce(mockSend('Real reply'));  // actual user message
+
+    const result = await makeClient().chat(null, 'hello', 'You are primed.');
+    expect(result.reply).toBe('Real reply');
+    expect(result.chatId).toBe('new-chat');
+    // createChat + primeMessage + userMessage = 3 fetch calls
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('sends primeMessage body to SEND_URL as the first message', async () => {
+    mockFetch
+      .mockResolvedValueOnce(mockCreate('chat-xyz'))
+      .mockResolvedValueOnce(mockSend('OK'))
+      .mockResolvedValueOnce(mockSend('Hi'));
+
+    await makeClient().chat(null, 'hello', 'PRIME_TEXT');
+
+    const primeFetchCall = mockFetch.mock.calls[1]; // 0=createChat, 1=primeMessage
+    expect(primeFetchCall[0]).toBe(SEND_URL);
+    expect(primeFetchCall[1].body).toContain('PRIME_TEXT');
+  });
+
+  it('does NOT send primeMessage when chatId already exists', async () => {
+    mockFetch.mockResolvedValueOnce(mockSend('Reply'));
+
+    await makeClient().chat('existing-id', 'hello', 'PRIME_TEXT');
+
+    // Only 1 call: the user message — no createChat, no prime
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch.mock.calls[0][1].body).toContain('hello');
+  });
+
+  it('re-primes on retry when a primeMessage was provided', async () => {
+    mockFetch
+      .mockResolvedValueOnce(mockCreate('chat-1'))      // createChat (new session)
+      .mockResolvedValueOnce(mockSend('OK'))             // primeMessage
+      .mockResolvedValueOnce({ ok: false, status: 503 }) // first sendMessage fails
+      .mockResolvedValueOnce(mockCreate('chat-2'))       // createChat (retry)
+      .mockResolvedValueOnce(mockSend('OK again'))       // re-prime on retry
+      .mockResolvedValueOnce(mockSend('Recovered'));     // retry sendMessage
+
+    const result = await makeClient().chat(null, 'hi', 'PRIME');
+    expect(result.reply).toBe('Recovered');
+    expect(result.chatId).toBe('chat-2');
+    expect(mockFetch).toHaveBeenCalledTimes(6);
+  });
+});
