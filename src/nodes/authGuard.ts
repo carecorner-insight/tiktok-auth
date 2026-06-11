@@ -9,6 +9,14 @@ interface IWhitelistService {
 
 export function makeAuthGuard(whitelistService: IWhitelistService) {
   return async function authGuard(state: CareyBotState): Promise<NodeResult> {
+    // ⚠️  LOAD-TEST ONLY — never set BYPASS_AUTH=true in production.
+    // When enabled, the whitelist check is skipped entirely so load tests
+    // can run without pre-populating SharePoint with test user IDs.
+    if (process.env.BYPASS_AUTH === 'true') {
+      console.warn('[auth] BYPASS_AUTH is enabled — whitelist check skipped');
+      return { isAuthorized: true };
+    }
+
     const authorized = await whitelistService.isAuthorized(state.platform, state.userId);
     if (!authorized) {
       const registrationUrl = process.env.REGISTRATION_URL ?? '';
