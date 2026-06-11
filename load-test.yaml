@@ -1,0 +1,51 @@
+config:
+  target: "https://tiktok-auth-topaz.vercel.app/api/webhook?platform=telegram"
+  phases:
+    - duration: 60          # Run the test for 1 minute
+      arrivalRate: 2        # Spawn 2 new users every second
+      name: "Sustained youth outreach spike"
+  
+  # Ensure we pass the required routing parameter
+  payload:
+    path: "./test-users.csv"
+    fields:
+      - "userId"
+      - "chatId"
+
+scenarios:
+  - name: "Telegram Conversational Flow"
+    flow:
+      - log: "New user {{ userId }} started chatting."
+      # 1. First Message (Triggers Triage / Redis Dedup Lock)
+      - post:
+          url: "/api/webhook?platform=telegram"
+          json:
+            update_id: 100001
+            message:
+              message_id: "{{ $randomString() }}" # Dynamic to pass dedup gate
+              from:
+                id: "{{ userId }}"
+                is_bot: false
+              chat:
+                id: "{{ chatId }}"
+              text: "Hello, I need someone to talk to."
+          headers:
+            # If you activated Webhook Verification, mock the secret header
+            # Otherwise, comment out or remove if verification is temporarily disabled
+            X-Telegram-Bot-Api-Secret-Token: "YOUR_MOCKED_SECRET_TOKEN"
+      
+      - think: 3 # Pause for 3 seconds (simulates the user reading the reply)
+
+      # 2. Second Message (Simulating continuous triage flow)
+      - post:
+          url: "/api/webhook?platform=telegram"
+          json:
+            update_id: 100002
+            message:
+              message_id: "{{ $randomString() }}"
+              from:
+                id: "{{ userId }}"
+                is_bot: false
+              chat:
+                id: "{{ chatId }}"
+              text: "I am 18 years old"
