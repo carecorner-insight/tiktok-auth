@@ -4,7 +4,7 @@ import { COUNSELLING_URL } from '../config/questionnaire';
 import { getLastUserInput } from '../types/nodes';
 
 interface IAIBotsClient {
-  chat: (chatId: string | null, message: string, primeMessage?: string) => Promise<{ chatId: string; reply: string }>;
+  chat(chatId: string | null, message: string, primeMessage?: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<{ chatId: string; reply: string }>;
 }
 
 interface ITypingIndicator {
@@ -42,8 +42,9 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: IT
       typing.sendTypingIndicator(state.userId).catch(() => {});
     }, 4000);
 
+    const history = state.messages.slice(0, -1);
     try {
-      const result = await aiBotsClient.chat(state.aiBotChatId, userText, primeMessage);
+      const result = await aiBotsClient.chat(state.aiBotChatId, userText, primeMessage, history);
       return {
         aiBotChatId: result.chatId,
         pendingResponse: result.reply,

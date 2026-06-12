@@ -1,3 +1,6 @@
+import { buildPrimeWithHistory } from '../lib/buildPrime';
+import type { HistoryMessage } from '../lib/buildPrime';
+
 type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean; status?: number; json(): Promise<unknown> }>;
 
 export interface ChatResult {
@@ -44,10 +47,16 @@ export class DifyClient {
     return { answer: data.answer, conversationId: data.conversation_id };
   }
 
-  async chat(chatId: string | null, text: string, primeMessage?: string): Promise<ChatResult> {
+  async chat(
+    chatId: string | null,
+    text: string,
+    primeMessage?: string,
+    history?: HistoryMessage[],
+  ): Promise<ChatResult> {
     if (chatId === null && primeMessage) {
-      // Prime the new conversation then send the actual text in the same session
-      const primed = await this.sendMessage(null, primeMessage);
+      // Prime new session with history appended so Dify has full context
+      const fullPrime = buildPrimeWithHistory(primeMessage, history);
+      const primed = await this.sendMessage(null, fullPrime);
       const result = await this.sendMessage(primed.conversationId, text);
       return { reply: result.answer, chatId: result.conversationId };
     }

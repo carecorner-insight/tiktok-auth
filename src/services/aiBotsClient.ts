@@ -1,3 +1,6 @@
+import { buildPrimeWithHistory } from '../lib/buildPrime';
+import type { HistoryMessage } from '../lib/buildPrime';
+
 type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean; status?: number; json(): Promise<unknown> }>;
 
 export interface ChatResult {
@@ -51,25 +54,31 @@ export class AIBotsClient {
     throw new Error('AIBots sendMessage: unexpected response format');
   }
 
-  async chat(chatId: string | null, text: string, primeMessage?: string): Promise<ChatResult> {
+  async chat(
+    chatId: string | null,
+    text: string,
+    primeMessage?: string,
+    history?: HistoryMessage[],
+  ): Promise<ChatResult> {
     const isNewSession = chatId === null;
     let activeChatId = chatId ?? await this.createChat();
 
-    // Prime new sessions so AIBots skips its own triage/screener and starts
-    // at the correct state — reply is discarded (it's context-setting only).
+    // Prime new sessions — history appended to prime so AIBots has full context
+    // on recovery (when a stale chatId forces a new session below).
     if (isNewSession && primeMessage) {
-      await this.sendMessage(activeChatId, primeMessage);
+      const fullPrime = buildPrimeWithHistory(primeMessage, history);
+      await this.sendMessage(activeChatId, fullPrime);
     }
 
     try {
       const reply = await this.sendMessage(activeChatId, text);
       return { reply, chatId: activeChatId };
     } catch {
-      // Stale chatId (AIBots restarted) — create a fresh session and retry once.
-      // Re-prime if we have a primeMessage so the new session also has context.
+      // Stale chatId (AIBots restarted) — create fresh session and replay context.
       activeChatId = await this.createChat();
       if (primeMessage) {
-        await this.sendMessage(activeChatId, primeMessage);
+        const fullPrime = buildPrimeWithHistory(primeMessage, history);
+        await this.sendMessage(activeChatId, fullPrime);
       }
       const reply = await this.sendMessage(activeChatId, text);
       return { reply, chatId: activeChatId };

@@ -3,7 +3,7 @@ import type { NodeResult } from '../types/nodes';
 import { EMERGENCY_MESSAGE } from '../config/questionnaire';
 
 interface IAIBotsClient {
-  chat(chatId: string | null, text: string, primeMessage?: string): Promise<{ reply: string; chatId: string }>;
+  chat(chatId: string | null, text: string, primeMessage?: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<{ reply: string; chatId: string }>;
 }
 
 interface ITypingIndicator {
@@ -38,8 +38,10 @@ export function makeEmergencyHandler(aiBotsClient: IAIBotsClient, typing: ITypin
     }, 4000);
 
     const textForAI = !state.aiBotChatId ? 'Hi' : state.messages[state.messages.length - 1]?.content ?? 'Hi';
+    // history = all messages except the current user message (last entry)
+    const history = state.messages.slice(0, -1);
     try {
-      const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage);
+      const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage, history);
       return {
         aiBotChatId: result.chatId,
         pendingResponse: result.reply,
