@@ -15,10 +15,12 @@ export function makeFreeTextNode(aiBotsClient: IAIBotsClient) {
 
     // Only prime new sessions — existing sessions already have context
     const primeMessage = !state.aiBotChatId
-      ? `[SYSTEM CONTEXT] The user has already completed the CareyBot intake screening. ` +
-        `Risk level: ${state.tag ?? 'low'}. They have chosen to talk about something that has been bothering them. ` +
-        `You are now in State 2B (Post-Screener Engagement). ` +
-        `Do not run triage or screener. Begin with a warm, brief invitation to share.`
+      ? `[SYSTEM CONTEXT] This is the start of a new conversation. ` +
+        `The user has completed the CareyBot intake screening (risk level: ${state.tag ?? 'low'}) ` +
+        `and is now opening a fresh chat to talk about something on their mind. ` +
+        `You are entering State 2B (Post-Screener Engagement) for the first time. ` +
+        `Do not reference any previous sessions. Do not run triage or screener. ` +
+        `Begin with a warm, brief invitation to share.`
       : undefined;
 
     const textForAI = !state.aiBotChatId ? 'Hi' : userText;

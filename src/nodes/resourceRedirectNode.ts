@@ -24,10 +24,12 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient) {
       };
     }
     const primeMessage = !state.aiBotChatId
-      ? `[SYSTEM CONTEXT] The user has already completed the CareyBot intake screening. ` +
-        `Risk level: ${state.tag ?? 'low'}. They have chosen to find resources. ` +
-        `You are now going to provide resource information for Care Corner and redirect them to the appropriate services and/or people in their lives. ` +
-        `Do not run triage or screener. Begin the resource provision and redirection process.`
+      ? `[SYSTEM CONTEXT] This is the start of a new conversation. ` +
+        `The user has completed the CareyBot intake screening (risk level: ${state.tag ?? 'low'}) ` +
+        `and is now opening a fresh chat to find support resources. ` +
+        `You are entering State 7 (Support Routing) for the first time. ` +
+        `Do not reference any previous sessions. Do not run triage or screener. ` +
+        `Help them find appropriate Care Corner services and support in their lives.`
       : undefined;
 
     const result = await aiBotsClient.chat(state.aiBotChatId, userText, primeMessage);

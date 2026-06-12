@@ -11,10 +11,12 @@ export function makeWellbeingCheckNode(aiBotsClient: IAIBotsClient) {
     const userText = getLastUserInput(state);
 
     const primeMessage = !state.aiBotChatId
-      ? `[SYSTEM CONTEXT] The user has already completed the CareyBot intake screening. ` +
-        `Risk level: ${state.tag ?? 'low'}. They have chosen to do a wellbeing self-check. ` +
-        `You are now in State 2A (Wellbeing Self Check). ` +
-        `Do not run triage or screener. Begin the wellbeing quiz.`
+      ? `[SYSTEM CONTEXT] This is the start of a new conversation. ` +
+        `The user has completed the CareyBot intake screening (risk level: ${state.tag ?? 'low'}) ` +
+        `and is now opening a fresh chat to do a wellbeing self-check. ` +
+        `You are entering State 2A (Wellbeing Self Check) for the first time. ` +
+        `Do not reference any previous sessions. Do not run triage or screener. ` +
+        `Begin the wellbeing quiz from the first question.`
       : undefined;
 
     const textForAI = !state.aiBotChatId ? 'Hi' : userText;
