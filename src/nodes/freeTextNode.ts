@@ -21,7 +21,8 @@ export function makeFreeTextNode(aiBotsClient: IAIBotsClient) {
         `Do not run triage or screener. Begin with a warm, brief invitation to share.`
       : undefined;
 
-    const result = await aiBotsClient.chat(state.aiBotChatId, userText, primeMessage);
+    const textForAI = !state.aiBotChatId ? 'Hi' : userText;
+    const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage);
 
     const isCrisis = result.reply.trimStart().startsWith(CRISIS_PREFIX);
     const cleanReply = isCrisis
