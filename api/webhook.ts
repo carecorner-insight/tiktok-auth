@@ -134,11 +134,13 @@ async function handleMessage(
     let result;
     let responseText = "I'm having trouble right now. Please try again in a moment.";
     try {
+      await adapter.sendTypingIndicator(msg.userId);
       result = await processMessage(msg, services);
       responseText = result.response;
     } catch (err) {
       console.error('[webhook] processMessage failed:', err);
       await adapter.sendMessage(msg.userId, responseText, msg.conversationId);
+    
       if (logger) {
         const fallbackState = await services.session.load(msg.platform, msg.userId);
         if (fallbackState) void logger.log(fallbackState, msg.text, responseText);
