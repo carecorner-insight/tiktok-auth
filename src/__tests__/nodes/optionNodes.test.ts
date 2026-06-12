@@ -120,12 +120,13 @@ describe('wellbeingCheckNode', () => {
     expect(result.pendingResponse).toBe('Wellbeing check response');
   });
 
-  it('sets conversationPhase to ended after completion', async () => {
+  it('stays in option phase so the multi-turn quiz is not cut short', async () => {
     const aiMock = makeAIBotsClientMock();
-    aiMock.chat.mockResolvedValue(aiReply('Done'));
+    aiMock.chat.mockResolvedValue(aiReply('How have you been sleeping?'));
     const node = makeWellbeingCheckNode(aiMock);
-    const result = await node(stateWithUserMessage('done'));
-    expect(result.conversationPhase).toBe('ended');
+    const result = await node(stateWithUserMessage('start'));
+    expect(result.conversationPhase).toBe('option');
+    expect(result.selectedOption).toBe(2);
   });
 
   it('persists the chatId from AIBots', async () => {
@@ -166,12 +167,13 @@ describe('stressManagementNode', () => {
     expect(result.pendingResponse).toBe('Here are some techniques...');
   });
 
-  it('sets conversationPhase to ended after completion', async () => {
+  it('stays in option phase to allow multi-turn stress management conversation', async () => {
     const aiMock = makeAIBotsClientMock();
-    aiMock.chat.mockResolvedValue(aiReply('Done'));
+    aiMock.chat.mockResolvedValue(aiReply('Try box breathing.'));
     const node = makeStressManagementNode(aiMock);
     const result = await node(stateWithUserMessage('ok'));
-    expect(result.conversationPhase).toBe('ended');
+    expect(result.conversationPhase).toBe('option');
+    expect(result.selectedOption).toBe(3);
   });
 
   it('passes a primeMessage referencing State 4 when aiBotChatId is null', async () => {

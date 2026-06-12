@@ -8,8 +8,10 @@
   "dependencies": {
     "@langchain/langgraph": "^0.2.0",
     "@vercel/functions": "^3.4.3",
+    "artillery": "^2.0.32",
     "ioredis": "^5.4.1",
-    "nodemailer": "^8.0.7"
+    "nodemailer": "^8.0.7",
+    "vercel": "^54.11.1"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",

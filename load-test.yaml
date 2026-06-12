@@ -1,11 +1,13 @@
 config:
-  target: "https://tiktok-auth-topaz.vercel.app/api/webhook?platform=telegram"
+  target: "https://tiktok-auth-topaz.vercel.app"
   phases:
-    - duration: 60          # Run the test for 1 minute
-      arrivalRate: 2        # Spawn 2 new users every second
+    - duration: 10
+      arrivalRate: 1
+      name: "Warmup"
+    - duration: 60
+      arrivalRate: 2
       name: "Sustained youth outreach spike"
-  
-  # Ensure we pass the required routing parameter
+
   payload:
     path: "./test-users.csv"
     fields:
@@ -13,34 +15,16 @@ config:
       - "chatId"
 
 scenarios:
-  - name: "Telegram Conversational Flow"
+  - name: "Full Conversational Flow"
     flow:
-      - log: "New user {{ userId }} started chatting."
-      # 1. First Message (Triggers Triage / Redis Dedup Lock)
-      - post:
-          url: "/api/webhook?platform=telegram"
-          json:
-            update_id: 100001
-            message:
-              message_id: "{{ $randomString() }}" # Dynamic to pass dedup gate
-              from:
-                id: "{{ userId }}"
-                is_bot: false
-              chat:
-                id: "{{ chatId }}"
-              text: "Hello, I need someone to talk to."
-          headers:
-            # If you activated Webhook Verification, mock the secret header
-            # Otherwise, comment out or remove if verification is temporarily disabled
-            X-Telegram-Bot-Api-Secret-Token: "YOUR_MOCKED_SECRET_TOKEN"
-      
-      - think: 3 # Pause for 3 seconds (simulates the user reading the reply)
+      - log: "User {{ userId }} starting conversation."
 
-      # 2. Second Message (Simulating continuous triage flow)
+      # ── Step 1 ─────────────────────────────────────────────────────────────
+      # First message → ageCheckNode (Carey introduces itself, asks age bracket)
       - post:
           url: "/api/webhook?platform=telegram"
           json:
-            update_id: 100002
+            update_id: "{{ $randomNumber(100000, 999999) }}"
             message:
               message_id: "{{ $randomString() }}"
               from:
@@ -48,4 +32,141 @@ scenarios:
                 is_bot: false
               chat:
                 id: "{{ chatId }}"
-              text: "I am 18 years old"
+              text: "hi"
+          headers:
+            X-Telegram-Bot-Api-Secret-Token: "YOUR_MOCKED_SECRET_TOKEN"
+
+      - think: 3   # user reads Carey's intro
+
+      # ── Step 2 ─────────────────────────────────────────────────────────────
+      # "yes" → ageGateNode → session enters questionnaire, Q1 sent
+      - post:
+          url: "/api/webhook?platform=telegram"
+          json:
+            update_id: "{{ $randomNumber(100000, 999999) }}"
+            message:
+              message_id: "{{ $randomString() }}"
+              from:
+                id: "{{ userId }}"
+                is_bot: false
+              chat:
+                id: "{{ chatId }}"
+              text: "yes"
+          headers:
+            X-Telegram-Bot-Api-Secret-Token: "YOUR_MOCKED_SECRET_TOKEN"
+
+      - think: 3   # user reads Q1 (suicidal ideation screen)
+
+      # ── Step 3 ─────────────────────────────────────────────────────────────
+      # Q1 "no" → answerEvaluator → not high risk, Q2 sent
+      - post:
+          url: "/api/webhook?platform=telegram"
+          json:
+            update_id: "{{ $randomNumber(100000, 999999) }}"
+            message:
+              message_id: "{{ $randomString() }}"
+              from:
+                id: "{{ userId }}"
+                is_bot: false
+              chat:
+                id: "{{ chatId }}"
+              text: "no"
+          headers:
+            X-Telegram-Bot-Api-Secret-Token: "YOUR_MOCKED_SECRET_TOKEN"
+
+      - think: 2
+
+      # ── Step 4 ─────────────────────────────────────────────────────────────
+      # Q2 "no" → answerEvaluator → Q3 sent
+      - post:
+          url: "/api/webhook?platform=telegram"
+          json:
+            update_id: "{{ $randomNumber(100000, 999999) }}"
+            message:
+              message_id: "{{ $randomString() }}"
+              from:
+                id: "{{ userId }}"
+                is_bot: false
+              chat:
+                id: "{{ chatId }}"
+              text: "no"
+          headers:
+            X-Telegram-Bot-Api-Secret-Token: "YOUR_MOCKED_SECRET_TOKEN"
+
+      - think: 2
+
+      # ── Step 5 ─────────────────────────────────────────────────────────────
+      # Q3 "no" → answerEvaluator → Q4 sent
+      - post:
+          url: "/api/webhook?platform=telegram"
+          json:
+            update_id: "{{ $randomNumber(100000, 999999) }}"
+            message:
+              message_id: "{{ $randomString() }}"
+              from:
+                id: "{{ userId }}"
+                is_bot: false
+              chat:
+                id: "{{ chatId }}"
+              text: "no"
+          headers:
+            X-Telegram-Bot-Api-Secret-Token: "YOUR_MOCKED_SECRET_TOKEN"
+
+      - think: 2
+
+      # ── Step 6 ─────────────────────────────────────────────────────────────
+      # Q4 "no" → answerEvaluator → score=0 (low), menuPresenter sends menu
+      - post:
+          url: "/api/webhook?platform=telegram"
+          json:
+            update_id: "{{ $randomNumber(100000, 999999) }}"
+            message:
+              message_id: "{{ $randomString() }}"
+              from:
+                id: "{{ userId }}"
+                is_bot: false
+              chat:
+                id: "{{ chatId }}"
+              text: "no"
+          headers:
+            X-Telegram-Bot-Api-Secret-Token: "YOUR_MOCKED_SECRET_TOKEN"
+
+      - think: 4   # user reads the menu
+
+      # ── Step 7 ─────────────────────────────────────────────────────────────
+      # Select option 1 → freeTextNode (AIBots session prime + first AI reply, ~9s)
+      - post:
+          url: "/api/webhook?platform=telegram"
+          json:
+            update_id: "{{ $randomNumber(100000, 999999) }}"
+            message:
+              message_id: "{{ $randomString() }}"
+              from:
+                id: "{{ userId }}"
+                is_bot: false
+              chat:
+                id: "{{ chatId }}"
+              text: "1"
+          headers:
+            X-Telegram-Bot-Api-Secret-Token: "YOUR_MOCKED_SECRET_TOKEN"
+
+      - think: 12  # AI round-trip: prime + first message (~9s) + user reading
+
+      # ── Step 8 ─────────────────────────────────────────────────────────────
+      # Follow-up free text → freeTextNode again (existing chatId, no prime)
+      - post:
+          url: "/api/webhook?platform=telegram"
+          json:
+            update_id: "{{ $randomNumber(100000, 999999) }}"
+            message:
+              message_id: "{{ $randomString() }}"
+              from:
+                id: "{{ userId }}"
+                is_bot: false
+              chat:
+                id: "{{ chatId }}"
+              text: "I have been feeling overwhelmed with school lately"
+          headers:
+            X-Telegram-Bot-Api-Secret-Token: "YOUR_MOCKED_SECRET_TOKEN"
+
+      - think: 12  # AI round-trip + user reading response
