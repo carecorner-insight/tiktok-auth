@@ -135,7 +135,6 @@ async function handleMessage(
     let result;
     let responseText = "I'm having trouble right now. Please try again in a moment.";
     try {
-      await adapter.sendTypingIndicator(msg.userId);
       result = await processMessage(msg, services);
       responseText = result.response;
     } catch (err) {
