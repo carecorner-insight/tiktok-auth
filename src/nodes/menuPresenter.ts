@@ -6,5 +6,6 @@ export function menuPresenter(_state: CareyBotState): NodeResult {
   return {
     pendingResponse: MENU_TEXT,
     conversationPhase: 'menu',
+    aiBotChatId: null,
   };
 }
