@@ -107,6 +107,24 @@ describe('freeTextNode', () => {
     const [, , primeMessage] = aiMock.chat.mock.calls[0];
     expect(primeMessage).toBeUndefined();
   });
+
+  it('substitutes "Hi" for the menu digit on the first turn so AIBots is not confused', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue(aiReply('Tell me more'));
+    const node = makeFreeTextNode(aiMock);
+    await node(stateNoSession('1'));
+    const [, textSent] = aiMock.chat.mock.calls[0];
+    expect(textSent).toBe('Hi');
+  });
+
+  it('passes the real user text on subsequent turns (aiBotChatId exists)', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue(aiReply('I hear you'));
+    const node = makeFreeTextNode(aiMock);
+    await node(stateExistingSession('I feel anxious'));
+    const [, textSent] = aiMock.chat.mock.calls[0];
+    expect(textSent).toBe('I feel anxious');
+  });
 });
 
 // ── wellbeingCheckNode ───────────────────────────────────────────────────────
@@ -154,6 +172,24 @@ describe('wellbeingCheckNode', () => {
     const [, , primeMessage] = aiMock.chat.mock.calls[0];
     expect(primeMessage).toBeUndefined();
   });
+
+  it('substitutes "Hi" for the menu digit on the first turn so AIBots is not confused', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue(aiReply('How have you been sleeping?'));
+    const node = makeWellbeingCheckNode(aiMock);
+    await node(stateNoSession('2'));
+    const [, textSent] = aiMock.chat.mock.calls[0];
+    expect(textSent).toBe('Hi');
+  });
+
+  it('passes the real user text on subsequent turns (aiBotChatId exists)', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue(aiReply('Good to hear'));
+    const node = makeWellbeingCheckNode(aiMock);
+    await node(stateExistingSession('Most of the time'));
+    const [, textSent] = aiMock.chat.mock.calls[0];
+    expect(textSent).toBe('Most of the time');
+  });
 });
 
 // ── stressManagementNode ─────────────────────────────────────────────────────
@@ -192,6 +228,24 @@ describe('stressManagementNode', () => {
     await node(stateExistingSession('more'));
     const [, , primeMessage] = aiMock.chat.mock.calls[0];
     expect(primeMessage).toBeUndefined();
+  });
+
+  it('substitutes "Hi" for the menu digit on the first turn so AIBots is not confused', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue(aiReply('Try box breathing.'));
+    const node = makeStressManagementNode(aiMock);
+    await node(stateNoSession('3'));
+    const [, textSent] = aiMock.chat.mock.calls[0];
+    expect(textSent).toBe('Hi');
+  });
+
+  it('passes the real user text on subsequent turns (aiBotChatId exists)', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue(aiReply('Good'));
+    const node = makeStressManagementNode(aiMock);
+    await node(stateExistingSession('that helped'));
+    const [, textSent] = aiMock.chat.mock.calls[0];
+    expect(textSent).toBe('that helped');
   });
 });
 
