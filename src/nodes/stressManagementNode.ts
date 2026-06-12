@@ -17,7 +17,8 @@ export function makeStressManagementNode(aiBotsClient: IAIBotsClient) {
         `Do not run triage or screener. Begin with ONE stress management technique.`
       : undefined;
 
-    const result = await aiBotsClient.chat(state.aiBotChatId, userText, primeMessage);
+    const textForAI = !state.aiBotChatId ? 'Hi' : userText;
+    const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage);
     return {
       aiBotChatId: result.chatId,
       pendingResponse: result.reply,
