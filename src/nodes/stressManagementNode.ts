@@ -6,7 +6,11 @@ interface IAIBotsClient {
   chat(chatId: string | null, text: string, primeMessage?: string): Promise<{ reply: string; chatId: string }>;
 }
 
-export function makeStressManagementNode(aiBotsClient: IAIBotsClient) {
+interface ITypingIndicator {
+  sendTypingIndicator(userId: string): Promise<void>;
+}
+
+export function makeStressManagementNode(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
   return async function stressManagementNode(state: CareyBotState): Promise<NodeResult> {
     const userText = getLastUserInput(state);
 
@@ -19,13 +23,22 @@ export function makeStressManagementNode(aiBotsClient: IAIBotsClient) {
         `Begin with ONE new stress management technique.`
       : undefined;
 
+    await typing.sendTypingIndicator(state.userId);
+    const typingInterval = setInterval(() => {
+      typing.sendTypingIndicator(state.userId).catch(() => {});
+    }, 4000);
+
     const textForAI = !state.aiBotChatId ? 'Hi' : userText;
-    const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage);
-    return {
-      aiBotChatId: result.chatId,
-      pendingResponse: result.reply,
-      selectedOption: 3,
-      conversationPhase: 'option',
-    };
+    try {
+      const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage);
+      return {
+        aiBotChatId: result.chatId,
+        pendingResponse: result.reply,
+        selectedOption: 3,
+        conversationPhase: 'option',
+      };
+    } finally {
+      clearInterval(typingInterval);
+    }
   };
 }

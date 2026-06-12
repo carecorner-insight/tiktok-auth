@@ -126,6 +126,7 @@ async function handleMessage(
         process.env.DIRECTUS_CREATE_CHAT_URL ?? '',
         process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
       ),
+      typing: adapter,
     };
 
     const logUrl = process.env.POWER_AUTOMATE_WEBHOOK_URL;

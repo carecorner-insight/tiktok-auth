@@ -35,10 +35,15 @@ interface IAIBotsClient {
   chat(chatId: string | null, text: string, primeMessage?: string): Promise<{ reply: string; chatId: string }>;
 }
 
+interface ITypingIndicator {
+  sendTypingIndicator(userId: string): Promise<void>;
+}
+
 export interface GraphServices {
   whitelist: IWhitelistService;
   session: ISessionManager;
   aiBots: IAIBotsClient;
+  typing: ITypingIndicator;
 }
 
 // ── State annotation — replacement reducers for arrays ────────────────────────
@@ -103,10 +108,10 @@ function routeFromOptionRouter(state: typeof GraphAnnotation.State): string {
 
 export function buildGraph(services: GraphServices) {
   const authGuard       = makeAuthGuard(services.whitelist);
-  const freeTextNode    = makeFreeTextNode(services.aiBots);
-  const wellbeingCheck  = makeWellbeingCheckNode(services.aiBots);
-  const stressMgmt      = makeStressManagementNode(services.aiBots);
-  const resourceRedirect = makeResourceRedirectNode(services.aiBots);
+  const freeTextNode    = makeFreeTextNode(services.aiBots, services.typing);
+  const wellbeingCheck  = makeWellbeingCheckNode(services.aiBots, services.typing);
+  const stressMgmt      = makeStressManagementNode(services.aiBots, services.typing);
+  const resourceRedirect = makeResourceRedirectNode(services.aiBots, services.typing);
   const sessionPersist  = makeSessionPersister(services.session);
 
   const graph = new StateGraph(GraphAnnotation)
