@@ -143,6 +143,7 @@ export function buildGraph(services: GraphServices) {
       ageGateNode:          'ageGateNode',
       questionnaireNode:    'questionnaireNode',
       answerEvaluator:      'answerEvaluator',
+      emergencyHandler:     'emergencyHandler',
       menuPresenter:        'menuPresenter',
       optionRouter:         'optionRouter',
       freeTextNode:         'freeTextNode',
