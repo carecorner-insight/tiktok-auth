@@ -6,7 +6,11 @@ interface IAIBotsClient {
   chat(chatId: string | null, text: string, primeMessage?: string): Promise<{ reply: string; chatId: string }>;
 }
 
-export function makeWellbeingCheckNode(aiBotsClient: IAIBotsClient) {
+interface ITypingIndicator {
+  sendTypingIndicator(userId: string): Promise<void>;
+}
+
+export function makeWellbeingCheckNode(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
   return async function wellbeingCheckNode(state: CareyBotState): Promise<NodeResult> {
     const userText = getLastUserInput(state);
 
@@ -19,13 +23,22 @@ export function makeWellbeingCheckNode(aiBotsClient: IAIBotsClient) {
         `Begin the wellbeing quiz from the first question.`
       : undefined;
 
+    await typing.sendTypingIndicator(state.userId);
+    const typingInterval = setInterval(() => {
+      typing.sendTypingIndicator(state.userId).catch(() => {});
+    }, 4000);
+
     const textForAI = !state.aiBotChatId ? 'Hi' : userText;
-    const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage);
-    return {
-      aiBotChatId: result.chatId,
-      pendingResponse: result.reply,
-      conversationPhase: 'option',
-      selectedOption: 2,
-    };
+    try {
+      const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage);
+      return {
+        aiBotChatId: result.chatId,
+        pendingResponse: result.reply,
+        conversationPhase: 'option',
+        selectedOption: 2,
+      };
+    } finally {
+      clearInterval(typingInterval);
+    }
   };
 }

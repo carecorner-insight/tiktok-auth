@@ -126,6 +126,7 @@ async function handleMessage(
         process.env.DIRECTUS_CREATE_CHAT_URL ?? '',
         process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
       ),
+      typing: adapter,
     };
 
     const logUrl = process.env.POWER_AUTOMATE_WEBHOOK_URL;
@@ -139,6 +140,7 @@ async function handleMessage(
     } catch (err) {
       console.error('[webhook] processMessage failed:', err);
       await adapter.sendMessage(msg.userId, responseText, msg.conversationId);
+    
       if (logger) {
         const fallbackState = await services.session.load(msg.platform, msg.userId);
         if (fallbackState) void logger.log(fallbackState, msg.text, responseText);

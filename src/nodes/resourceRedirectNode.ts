@@ -7,7 +7,11 @@ interface IAIBotsClient {
   chat: (chatId: string | null, message: string, primeMessage?: string) => Promise<{ chatId: string; reply: string }>;
 }
 
-export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient) {
+interface ITypingIndicator {
+  sendTypingIndicator(userId: string): Promise<void>;
+}
+
+export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
   return async function resourceRedirectNode(state: CareyBotState): Promise<NodeResult> {
     const userText = getLastUserInput(state);
     const isInitialSelection = /^[.\s]*[4][.\s]*$/.test(userText);
@@ -23,6 +27,7 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient) {
         selectedOption: 4,
       };
     }
+
     const primeMessage = !state.aiBotChatId
       ? `[SYSTEM CONTEXT] This is the start of a new conversation. ` +
         `The user has completed the CareyBot intake screening (risk level: ${state.tag ?? 'low'}) ` +
@@ -32,12 +37,21 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient) {
         `Help them find appropriate Care Corner services and support in their lives.`
       : undefined;
 
-    const result = await aiBotsClient.chat(state.aiBotChatId, userText, primeMessage);
-    return {
-      aiBotChatId: result.chatId,
-      pendingResponse: result.reply,
-      conversationPhase: 'option',
-      selectedOption: 4,
-    };
+    await typing.sendTypingIndicator(state.userId);
+    const typingInterval = setInterval(() => {
+      typing.sendTypingIndicator(state.userId).catch(() => {});
+    }, 4000);
+
+    try {
+      const result = await aiBotsClient.chat(state.aiBotChatId, userText, primeMessage);
+      return {
+        aiBotChatId: result.chatId,
+        pendingResponse: result.reply,
+        conversationPhase: 'option',
+        selectedOption: 4,
+      };
+    } finally {
+      clearInterval(typingInterval);
+    }
   };
 }
