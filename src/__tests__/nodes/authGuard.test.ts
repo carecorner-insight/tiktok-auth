@@ -18,15 +18,15 @@ describe('authGuard', () => {
     const node = makeAuthGuard(whitelist);
     const result = await node(makeState({ userId: 'stranger', platform: 'telegram' }));
     expect(result.isAuthorized).toBe(false);
-    expect(result.pendingResponse).toContain('stranger');
+    expect(result.pendingResponse).toBeTruthy();
   });
 
-  it('registration message includes the user ID so they can copy it into the form', async () => {
+  it('registration message does not embed the user ID (it is sent as a separate message by webhook.ts)', async () => {
     const whitelist = makeWhitelistServiceMock();
     whitelist.isAuthorized.mockResolvedValue(false);
     const node = makeAuthGuard(whitelist);
     const result = await node(makeState({ userId: 'tiktok-abc-999', platform: 'tiktok' }));
-    expect(result.pendingResponse).toContain('tiktok-abc-999');
+    expect(result.pendingResponse).not.toContain('tiktok-abc-999');
   });
 });
 

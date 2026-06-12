@@ -150,6 +150,11 @@ async function handleMessage(
 
     await adapter.sendMessage(msg.userId, result.response, msg.conversationId);
 
+    // Send user ID as a separate message so unauthorized users can long-press to copy it
+    if (!result.state.isAuthorized) {
+      await adapter.sendMessage(msg.userId, msg.userId, msg.conversationId);
+    }
+
     if (logger) void logger.log(result.state, msg.text, result.response);
     console.log(`[perf] handleMessage total: ${Date.now() - tTotal}ms`);
   });

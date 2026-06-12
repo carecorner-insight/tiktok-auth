@@ -2,9 +2,52 @@ import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { EMERGENCY_MESSAGE } from '../config/questionnaire';
 
-export function emergencyHandler(_state: CareyBotState): NodeResult {
-  return {
-    pendingResponse: EMERGENCY_MESSAGE,
-    conversationPhase: 'ended',
+interface IAIBotsClient {
+  chat(chatId: string | null, text: string, primeMessage?: string): Promise<{ reply: string; chatId: string }>;
+}
+
+interface ITypingIndicator {
+  sendTypingIndicator(userId: string): Promise<void>;
+}
+
+export function makeEmergencyHandler(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
+  return async function emergencyHandler(state: CareyBotState): Promise<NodeResult> {
+    // First crisis turn: send the static hotline message immediately, no AI call.
+    // Subsequent turns (phase already 'crisis'): hand off to AIBots for ongoing support.
+    if (state.conversationPhase !== 'crisis') {
+      return {
+        pendingResponse: EMERGENCY_MESSAGE,
+        conversationPhase: 'crisis',
+        crisisDetected: true,
+      };
+    }
+
+    const primeMessage = !state.aiBotChatId
+      ? `[SYSTEM CONTEXT] This is a crisis support conversation. ` +
+        `The user has been identified as high risk and has already received emergency hotline information. ` +
+        `You are in State 8 (Crisis Routing). ` +
+        `Do not run triage or screener. Do not reference previous sessions. ` +
+        `Your role is to keep the user engaged, validate their feelings, and gently reinforce ` +
+        `that they should reach out to 1771 (National Mindline) or 995 for immediate danger. ` +
+        `Stay calm, warm, and present. Do not end the conversation.`
+      : undefined;
+
+    await typing.sendTypingIndicator(state.userId);
+    const typingInterval = setInterval(() => {
+      typing.sendTypingIndicator(state.userId).catch(() => {});
+    }, 4000);
+
+    const textForAI = !state.aiBotChatId ? 'Hi' : state.messages[state.messages.length - 1]?.content ?? 'Hi';
+    try {
+      const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage);
+      return {
+        aiBotChatId: result.chatId,
+        pendingResponse: result.reply,
+        conversationPhase: 'crisis',
+        crisisDetected: true,
+      };
+    } finally {
+      clearInterval(typingInterval);
+    }
   };
 }

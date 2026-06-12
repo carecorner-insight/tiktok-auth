@@ -6,7 +6,7 @@ import { TOTAL_QUESTIONS } from '../config/questionnaire';
 import { router } from '../nodes/router';
 import { questionnaireNode } from '../nodes/questionnaireNode';
 import { answerEvaluator } from '../nodes/answerEvaluator';
-import { emergencyHandler } from '../nodes/emergencyHandler';
+import { makeEmergencyHandler } from '../nodes/emergencyHandler';
 import { menuPresenter } from '../nodes/menuPresenter';
 import { optionRouter } from '../nodes/optionRouter';
 import { makeResourceRedirectNode } from '../nodes/resourceRedirectNode';
@@ -107,12 +107,13 @@ function routeFromOptionRouter(state: typeof GraphAnnotation.State): string {
 // ── Graph builder ─────────────────────────────────────────────────────────────
 
 export function buildGraph(services: GraphServices) {
-  const authGuard       = makeAuthGuard(services.whitelist);
-  const freeTextNode    = makeFreeTextNode(services.aiBots, services.typing);
-  const wellbeingCheck  = makeWellbeingCheckNode(services.aiBots, services.typing);
-  const stressMgmt      = makeStressManagementNode(services.aiBots, services.typing);
+  const authGuard        = makeAuthGuard(services.whitelist);
+  const emergencyHandler = makeEmergencyHandler(services.aiBots, services.typing);
+  const freeTextNode     = makeFreeTextNode(services.aiBots, services.typing);
+  const wellbeingCheck   = makeWellbeingCheckNode(services.aiBots, services.typing);
+  const stressMgmt       = makeStressManagementNode(services.aiBots, services.typing);
   const resourceRedirect = makeResourceRedirectNode(services.aiBots, services.typing);
-  const sessionPersist  = makeSessionPersister(services.session);
+  const sessionPersist   = makeSessionPersister(services.session);
 
   const graph = new StateGraph(GraphAnnotation)
 

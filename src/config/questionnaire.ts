@@ -49,7 +49,7 @@ export const EMERGENCY_MESSAGE =
 export const UNAUTHORIZED_MESSAGE =
   "Hi! CareyBot is currently in private access.\n\n" +
   "To request access, please register at: {REGISTRATION_URL}\n\n" +
-  "Your User ID is: {USER_ID}";
+  "Your User ID for the registration form is:";
 
 
 export const COUNSELLING_URL =

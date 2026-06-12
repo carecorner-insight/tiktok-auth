@@ -7,6 +7,7 @@ export type ConversationPhase =
   | 'questionnaire'
   | 'menu'
   | 'option'
+  | 'crisis'
   | 'ended';
 
 export type MenuOption = 1 | 2 | 3 | 4;

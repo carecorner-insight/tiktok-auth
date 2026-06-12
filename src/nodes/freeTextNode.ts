@@ -42,7 +42,7 @@ export function makeFreeTextNode(aiBotsClient: IAIBotsClient, typing: ITypingInd
       return {
         aiBotChatId: result.chatId,
         pendingResponse: cleanReply,
-        ...(isCrisis && { crisisDetected: true, conversationPhase: 'ended' }),
+        ...(isCrisis && { crisisDetected: true, conversationPhase: 'crisis' }),
       };
     } finally {
       clearInterval(typingInterval);

@@ -32,6 +32,8 @@ export function router(state: CareyBotState): string {
     return awaitingAnswer ? 'answerEvaluator' : 'questionnaireNode';
   }
 
+  if (conversationPhase === 'crisis') return 'emergencyHandler';
+
   if (conversationPhase === 'menu') return 'optionRouter';
 
   if (conversationPhase === 'option' && selectedOption) {
