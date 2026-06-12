@@ -10,6 +10,8 @@ import { WhitelistService } from '../src/services/whitelistService';
 import { SessionManager } from '../src/services/sessionManager';
 import { SharePointLogger } from '../src/services/sharePointLogger';
 import { AIBotsClient } from '../src/services/aiBotsClient';
+import { DifyClient } from '../src/services/difyClient';
+import { FallbackAIClient } from '../src/services/fallbackAIClient';
 import type { IPlatformAdapter } from '../src/types/platform';
 import type { Platform } from '../src/types/state';
 
@@ -122,9 +124,15 @@ async function handleMessage(
     const services = {
       whitelist: new WhitelistService(redis, fetchWhitelistStatus),
       session: new SessionManager(redis),
-      aiBots: new AIBotsClient(
-        process.env.DIRECTUS_CREATE_CHAT_URL ?? '',
-        process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
+      aiBots: new FallbackAIClient(
+        new AIBotsClient(
+          process.env.DIRECTUS_CREATE_CHAT_URL ?? '',
+          process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
+        ),
+        new DifyClient(
+          process.env.DIFY_API_URL ?? '',
+          process.env.DIFY_API_KEY ?? '',
+        ),
       ),
       typing: adapter,
     };
