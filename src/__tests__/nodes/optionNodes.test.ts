@@ -1,7 +1,7 @@
 import { makeFreeTextNode } from '@/nodes/freeTextNode';
 import { makeWellbeingCheckNode } from '@/nodes/wellbeingCheckNode';
 import { makeStressManagementNode } from '@/nodes/stressManagementNode';
-import { resourceRedirectNode } from '@/nodes/resourceRedirectNode';
+import { makeResourceRedirectNode } from '@/nodes/resourceRedirectNode';
 import { makeState, makeAIBotsClientMock } from '@/__tests__/mocks';
 import { COUNSELLING_URL } from '@/config/questionnaire';
 
@@ -198,13 +198,60 @@ describe('stressManagementNode', () => {
 // ── resourceRedirectNode ─────────────────────────────────────────────────────
 
 describe('resourceRedirectNode', () => {
-  it('returns the counselling booking URL in the response', () => {
-    const result = resourceRedirectNode(makeState());
+  const initialSelectionState = (text = '4') =>
+    makeState({
+      conversationPhase: 'option',
+      selectedOption: 4,
+      aiBotChatId: null,
+      messages: [{ role: 'user', content: text, timestamp: Date.now() }],
+    });
+
+  it('returns the counselling booking URL on the initial selection without calling AIBots', async () => {
+    const aiMock = makeAIBotsClientMock();
+    const node = makeResourceRedirectNode(aiMock);
+    const result = await node(initialSelectionState('4'));
     expect(result.pendingResponse).toContain(COUNSELLING_URL);
+    expect(aiMock.chat).not.toHaveBeenCalled();
   });
 
-  it('sets conversationPhase to ended', () => {
-    const result = resourceRedirectNode(makeState());
-    expect(result.conversationPhase).toBe('ended');
+  it('stays in option phase on initial selection', async () => {
+    const aiMock = makeAIBotsClientMock();
+    const node = makeResourceRedirectNode(aiMock);
+    const result = await node(initialSelectionState('4'));
+    expect(result.conversationPhase).toBe('option');
+    expect(result.selectedOption).toBe(4);
+  });
+
+  it('calls AIBots with a State 7 prime on the first follow-up (new session)', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue({ reply: 'How can I help?', chatId: 'res-chat-id' });
+    const node = makeResourceRedirectNode(aiMock);
+    const state = makeState({
+      conversationPhase: 'option',
+      selectedOption: 4,
+      aiBotChatId: null,
+      messages: [{ role: 'user', content: 'I need help finding a counsellor', timestamp: Date.now() }],
+    });
+    const result = await node(state);
+    const [, , primeMessage] = aiMock.chat.mock.calls[0];
+    expect(primeMessage).toBeTruthy();
+    expect(primeMessage).toContain('State 7');
+    expect(result.aiBotChatId).toBe('res-chat-id');
+    expect(result.conversationPhase).toBe('option');
+  });
+
+  it('does NOT pass a primeMessage on subsequent turns (existing session)', async () => {
+    const aiMock = makeAIBotsClientMock();
+    aiMock.chat.mockResolvedValue({ reply: 'Sure, here is more info.', chatId: 'res-chat-id' });
+    const node = makeResourceRedirectNode(aiMock);
+    const state = makeState({
+      conversationPhase: 'option',
+      selectedOption: 4,
+      aiBotChatId: 'res-chat-id',
+      messages: [{ role: 'user', content: 'tell me more', timestamp: Date.now() }],
+    });
+    await node(state);
+    const [, , primeMessage] = aiMock.chat.mock.calls[0];
+    expect(primeMessage).toBeUndefined();
   });
 });

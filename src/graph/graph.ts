@@ -9,7 +9,7 @@ import { answerEvaluator } from '../nodes/answerEvaluator';
 import { emergencyHandler } from '../nodes/emergencyHandler';
 import { menuPresenter } from '../nodes/menuPresenter';
 import { optionRouter } from '../nodes/optionRouter';
-import { resourceRedirectNode } from '../nodes/resourceRedirectNode';
+import { makeResourceRedirectNode } from '../nodes/resourceRedirectNode';
 import { restartNode } from '../nodes/restartNode';
 import { ageCheckNode } from '../nodes/ageCheckNode';
 import { ageGateNode } from '../nodes/ageGateNode';
@@ -106,6 +106,7 @@ export function buildGraph(services: GraphServices) {
   const freeTextNode    = makeFreeTextNode(services.aiBots);
   const wellbeingCheck  = makeWellbeingCheckNode(services.aiBots);
   const stressMgmt      = makeStressManagementNode(services.aiBots);
+  const resourceRedirect = makeResourceRedirectNode(services.aiBots);
   const sessionPersist  = makeSessionPersister(services.session);
 
   const graph = new StateGraph(GraphAnnotation)
@@ -123,7 +124,7 @@ export function buildGraph(services: GraphServices) {
     .addNode('freeTextNode',         freeTextNode)
     .addNode('wellbeingCheckNode',   wellbeingCheck)
     .addNode('stressManagementNode', stressMgmt)
-    .addNode('resourceRedirectNode', resourceRedirectNode)
+    .addNode('resourceRedirectNode', resourceRedirect)
     .addNode('sessionPersister',     sessionPersist)
 
     // ── Entry ──
