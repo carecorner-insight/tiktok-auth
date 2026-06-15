@@ -19,6 +19,8 @@ import { makeFreeTextNode } from '../nodes/freeTextNode';
 import { makeWellbeingCheckNode } from '../nodes/wellbeingCheckNode';
 import { makeStressManagementNode } from '../nodes/stressManagementNode';
 import { makeSessionPersister } from '../nodes/sessionPersister';
+import { safetyCheckNode } from '../nodes/safetyCheckNode';
+import { safetyGateNode } from '../nodes/safetyGateNode';
 
 // ── Services interfaces (graph accepts abstractions, not concretions) ─────────
 
@@ -81,10 +83,17 @@ function routeFromAuth(state: typeof GraphAnnotation.State): string {
 
 function routeFromAnswerEvaluator(state: typeof GraphAnnotation.State): string {
   const next =
-    state.tag === 'high'                        ? 'emergencyHandler'  :
-    state.questionIndex < TOTAL_QUESTIONS       ? 'questionnaireNode' :
-                                                  'menuPresenter';
+    state.tag === 'high'                  ? 'emergencyHandler'  :
+    state.questionIndex < TOTAL_QUESTIONS ? 'questionnaireNode' :
+    state.tag === 'moderate'              ? 'safetyCheckNode'   :
+                                            'menuPresenter';
   console.log(`[route] answerEvaluator → ${next} (tag=${state.tag}, questionIndex=${state.questionIndex})`);
+  return next;
+}
+
+function routeFromSafetyGate(state: typeof GraphAnnotation.State): string {
+  const next = state.crisisDetected ? 'emergencyHandler' : 'menuPresenter';
+  console.log(`[route] safetyGate → ${next} (crisisDetected=${state.crisisDetected})`);
   return next;
 }
 
@@ -124,6 +133,8 @@ export function buildGraph(services: GraphServices) {
     .addNode('ageGateNode',          ageGateNode)
     .addNode('questionnaireNode',    questionnaireNode)
     .addNode('answerEvaluator',      answerEvaluator)
+    .addNode('safetyCheckNode',      safetyCheckNode)
+    .addNode('safetyGateNode',       safetyGateNode)
     .addNode('emergencyHandler',     emergencyHandler)
     .addNode('menuPresenter',        menuPresenter)
     .addNode('optionRouter',         optionRouter)
@@ -143,6 +154,8 @@ export function buildGraph(services: GraphServices) {
       ageGateNode:          'ageGateNode',
       questionnaireNode:    'questionnaireNode',
       answerEvaluator:      'answerEvaluator',
+      safetyCheckNode:      'safetyCheckNode',
+      safetyGateNode:       'safetyGateNode',
       emergencyHandler:     'emergencyHandler',
       menuPresenter:        'menuPresenter',
       optionRouter:         'optionRouter',
@@ -154,11 +167,18 @@ export function buildGraph(services: GraphServices) {
       [END]: END,
     })
 
-    // ── answerEvaluator → emergency | next question | menu ──
+    // ── answerEvaluator → emergency | next question | safety check | menu ──
     .addConditionalEdges('answerEvaluator', routeFromAnswerEvaluator, {
       emergencyHandler:  'emergencyHandler',
       questionnaireNode: 'questionnaireNode',
+      safetyCheckNode:   'safetyCheckNode',
       menuPresenter:     'menuPresenter',
+    })
+
+    // ── safetyGateNode → emergency (not safe) | menu (safe) ──
+    .addConditionalEdges('safetyGateNode', routeFromSafetyGate, {
+      emergencyHandler: 'emergencyHandler',
+      menuPresenter:    'menuPresenter',
     })
 
     // ── optionRouter → option node | re-present menu ──
@@ -175,6 +195,7 @@ export function buildGraph(services: GraphServices) {
     .addEdge('ageCheckNode',         'sessionPersister')
     .addEdge('ageGateNode',          'sessionPersister')
     .addEdge('questionnaireNode',    'sessionPersister')
+    .addEdge('safetyCheckNode',      'sessionPersister')
     .addEdge('emergencyHandler',     'sessionPersister')
     .addEdge('menuPresenter',        'sessionPersister')
     .addEdge('freeTextNode',         'sessionPersister')

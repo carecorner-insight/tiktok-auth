@@ -31,10 +31,19 @@ export class FallbackAIClient {
       ? chatId.replace(AIBOTS_PREFIX, '').replace(DIFY_PREFIX, '')
       : null;
 
-    // ── Already on Dify (previous turn failed over) — stay on Dify ──
+    // ── Currently on Dify — probe AIBots to see if it has recovered ──
     if (isDifySession) {
-      const result = await this.fallback.chat(rawId, text, primeMessage, history);
-      return { reply: result.reply, chatId: `${DIFY_PREFIX}${result.chatId}` };
+      try {
+        // Always start a fresh AIBots session (no usable chatId) and replay
+        // history so it has full context if the switch-back succeeds.
+        const result = await this.primary.chat(null, text, primeMessage, history);
+        console.log('[ai] AIBots recovered — switching back from Dify');
+        return { reply: result.reply, chatId: `${AIBOTS_PREFIX}${result.chatId}` };
+      } catch {
+        // Still down — continue on the existing Dify session
+        const result = await this.fallback.chat(rawId, text, primeMessage, history);
+        return { reply: result.reply, chatId: `${DIFY_PREFIX}${result.chatId}` };
+      }
     }
 
     // ── Try primary (AIBots) ──

@@ -2,6 +2,7 @@ import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { COUNSELLING_URL } from '../config/questionnaire';
 import { getLastUserInput } from '../types/nodes';
+import { parseCrisisReply } from '../lib/crisisDetection';
 
 interface IAIBotsClient {
   chat(chatId: string | null, message: string, primeMessage?: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<{ chatId: string; reply: string }>;
@@ -45,11 +46,13 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: IT
     const history = state.messages.slice(0, -1);
     try {
       const result = await aiBotsClient.chat(state.aiBotChatId, userText, primeMessage, history);
+      const { reply, isCrisis } = parseCrisisReply(result.reply);
       return {
         aiBotChatId: result.chatId,
-        pendingResponse: result.reply,
-        conversationPhase: 'option',
+        pendingResponse: reply,
+        conversationPhase: isCrisis ? 'crisis' : 'option',
         selectedOption: 4,
+        ...(isCrisis && { crisisDetected: true }),
       };
     } finally {
       clearInterval(typingInterval);

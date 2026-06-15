@@ -1,10 +1,11 @@
 export type Platform = 'tiktok' | 'telegram';
 
-export type tag = 'low' | 'medium' | 'high';
+export type tag = 'low' | 'elevated' | 'moderate' | 'high';
 
 export type ConversationPhase =
   | 'ageCheck'
   | 'questionnaire'
+  | 'safetyCheck'
   | 'menu'
   | 'option'
   | 'crisis'
@@ -27,8 +28,8 @@ export interface CareyBotState {
   // RBAC
   isAuthorized: boolean;
 
-  // Questionnaire — Q1 is suicidal ideation (PHQ-9 Q9, screened first)
-  questionIndex: number;       // 0–8; 9 = all answered
+  // Questionnaire — C-SSRS informed 4-question screener
+  questionIndex: number;       // 0–3; 4 = all answered
   answers: string[];           // 'yes' | 'no' per question
   tag: tag | null;
 

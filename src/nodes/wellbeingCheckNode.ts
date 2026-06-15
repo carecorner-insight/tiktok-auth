@@ -1,6 +1,7 @@
 import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { getLastUserInput } from '../types/nodes';
+import { parseCrisisReply } from '../lib/crisisDetection';
 
 interface IAIBotsClient {
   chat(chatId: string | null, text: string, primeMessage?: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<{ reply: string; chatId: string }>;
@@ -32,11 +33,13 @@ export function makeWellbeingCheckNode(aiBotsClient: IAIBotsClient, typing: ITyp
     const history = state.messages.slice(0, -1);
     try {
       const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage, history);
+      const { reply, isCrisis } = parseCrisisReply(result.reply);
       return {
         aiBotChatId: result.chatId,
-        pendingResponse: result.reply,
-        conversationPhase: 'option',
+        pendingResponse: reply,
+        conversationPhase: isCrisis ? 'crisis' : 'option',
         selectedOption: 2,
+        ...(isCrisis && { crisisDetected: true }),
       };
     } finally {
       clearInterval(typingInterval);

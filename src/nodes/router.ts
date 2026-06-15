@@ -32,6 +32,12 @@ export function router(state: CareyBotState): string {
     return awaitingAnswer ? 'answerEvaluator' : 'questionnaireNode';
   }
 
+  if (conversationPhase === 'safetyCheck') {
+    const lastAssistant = [...state.messages].reverse().find(m => m.role === 'assistant');
+    const awaitingAnswer = lastAssistant?.content.includes('Yes / No') ?? false;
+    return awaitingAnswer ? 'safetyGateNode' : 'safetyCheckNode';
+  }
+
   if (conversationPhase === 'crisis') return 'emergencyHandler';
 
   if (conversationPhase === 'menu') return 'optionRouter';
