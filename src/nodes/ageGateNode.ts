@@ -1,7 +1,7 @@
 import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { getLastUserInput } from '../types/nodes';
-import { PHQ9_QUESTIONS } from '../config/questionnaire';
+import { CSSRS_QUESTIONS } from '../config/questionnaire';
 
 const OUT_OF_SCOPE_MESSAGE =
   "Thanks for letting me know.\n\n" +
@@ -33,6 +33,6 @@ export function ageGateNode(state: CareyBotState): NodeResult {
   // Yes — move directly to Q1
   return {
     conversationPhase: 'questionnaire',
-    pendingResponse: `${QUESTIONNAIRE_PREAMBLE}\n\n${PHQ9_QUESTIONS[0].text}\n\nYes / No`,
+    pendingResponse: `${QUESTIONNAIRE_PREAMBLE}\n\n${CSSRS_QUESTIONS[0].text}\n\nYes / No`,
   };
 }
