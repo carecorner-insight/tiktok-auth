@@ -14,7 +14,8 @@ const MENU_KEYWORDS = new Set(['menu', 'back', 'back to menu', 'change', 'option
 export function router(state: CareyBotState): string {
   const { conversationPhase, selectedOption } = state;
 
-  if (getLastUserInput(state) === '/restart') return 'restartNode';
+  // getLastUserInput normalises punctuation, so "/restart" arrives as "restart"
+  if (getLastUserInput(state) === 'restart') return 'restartNode';
 
   if (conversationPhase === 'ageCheck') {
     const lastAssistant = [...state.messages].reverse().find(m => m.role === 'assistant');
