@@ -2,6 +2,15 @@ import type { CareyBotState } from '../types/state';
 
 type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean }>;
 
+// Derives which AI provider answered from the prefixed chat id set by
+// FallbackAIClient ("aibots:" / "dify:"). Returns 'none' when no AI has
+// been engaged yet (e.g. questionnaire / age-check turns).
+function providerFromChatId(chatId: string | null): 'aibots' | 'dify' | 'none' {
+  if (chatId?.startsWith('aibots:')) return 'aibots';
+  if (chatId?.startsWith('dify:'))   return 'dify';
+  return 'none';
+}
+
 export class SharePointLogger {
   constructor(
     private readonly webhookUrl: string,
@@ -21,6 +30,7 @@ export class SharePointLogger {
       conversationPhase: state.conversationPhase,
       questionIndex: state.questionIndex,
       answers: state.answers,
+      aiProvider: providerFromChatId(state.aiBotChatId),
       userMessage,
       aiResponse,
       timestamp: new Date().toISOString(),

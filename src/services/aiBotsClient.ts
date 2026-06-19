@@ -3,6 +3,20 @@ import type { HistoryMessage } from '../lib/buildPrime';
 
 type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean; status?: number; json(): Promise<unknown> }>;
 
+// Returns a minimal recovery prime when the original prime is unavailable
+// (mid-session turns don't carry a primeMessage). Only used when history
+// contains prior AI turns — otherwise there's nothing to recover.
+function recoveryPrimeFromHistory(history?: HistoryMessage[]): string | undefined {
+  const hasPriorAITurns = history?.some(m => m.role === 'assistant') ?? false;
+  if (!hasPriorAITurns) return undefined;
+  return (
+    '[SYSTEM CONTEXT] This conversation is resuming after a session restart. ' +
+    'You are Carey, a mental health support assistant. ' +
+    'Continue naturally from the conversation history below.'
+  );
+}
+
+
 export interface ChatResult {
   reply: string;
   chatId: string;
@@ -75,9 +89,12 @@ export class AIBotsClient {
       return { reply, chatId: activeChatId };
     } catch {
       // Stale chatId (AIBots restarted) — create fresh session and replay context.
+      // primeMessage is undefined for mid-session turns, so fall back to a
+      // generic recovery prime so history is still injected.
       activeChatId = await this.createChat();
-      if (primeMessage) {
-        const fullPrime = buildPrimeWithHistory(primeMessage, history);
+      const recoveryPrime = primeMessage ?? recoveryPrimeFromHistory(history);
+      if (recoveryPrime) {
+        const fullPrime = buildPrimeWithHistory(recoveryPrime, history);
         await this.sendMessage(activeChatId, fullPrime);
       }
       const reply = await this.sendMessage(activeChatId, text);

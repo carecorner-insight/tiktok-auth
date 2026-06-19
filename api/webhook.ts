@@ -151,7 +151,9 @@ async function handleMessage(
     
       if (logger) {
         const fallbackState = await services.session.load(msg.platform, msg.userId);
-        if (fallbackState) void logger.log(fallbackState, msg.text, responseText);
+        // Await: fire-and-forget would be dropped when the serverless function
+        // freezes before the HTTP POST completes. logger.log never throws.
+        if (fallbackState) await logger.log(fallbackState, msg.text, responseText);
       }
       return;
     }
@@ -163,7 +165,10 @@ async function handleMessage(
       await adapter.sendMessage(msg.userId, msg.userId, msg.conversationId);
     }
 
-    if (logger) void logger.log(result.state, msg.text, result.response);
+    // Await: the user already has their reply (sendMessage above), so this adds
+    // no perceived latency, and awaiting prevents the log POST being dropped
+    // when the serverless function freezes. logger.log never throws.
+    if (logger) await logger.log(result.state, msg.text, result.response);
     console.log(`[perf] handleMessage total: ${Date.now() - tTotal}ms`);
   });
 }

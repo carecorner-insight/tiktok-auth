@@ -53,9 +53,17 @@ export class DifyClient {
     primeMessage?: string,
     history?: HistoryMessage[],
   ): Promise<ChatResult> {
-    if (chatId === null && primeMessage) {
-      // Prime new session with history appended so Dify has full context
-      const fullPrime = buildPrimeWithHistory(primeMessage, history);
+    const hasPriorContext = history?.some(m => m.role === 'assistant') ?? false;
+
+    if (chatId === null && (primeMessage || hasPriorContext)) {
+      // Prime new session with history appended so Dify has full context.
+      // Works for both fresh sessions (explicit prime) and recovery/fallover
+      // (history-only, prime may be undefined).
+      const effectivePrime = primeMessage ?? (
+        '[SYSTEM CONTEXT] You are Carey, a mental health support assistant. ' +
+        'Continue naturally from the conversation history below.'
+      );
+      const fullPrime = buildPrimeWithHistory(effectivePrime, history);
       const primed = await this.sendMessage(null, fullPrime);
       const result = await this.sendMessage(primed.conversationId, text);
       return { reply: result.answer, chatId: result.conversationId };

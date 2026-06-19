@@ -1,6 +1,7 @@
 import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { EMERGENCY_MESSAGE } from '../config/questionnaire';
+import { parseCrisisReply } from '../lib/crisisDetection';
 
 interface IAIBotsClient {
   chat(chatId: string | null, text: string, primeMessage?: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<{ reply: string; chatId: string }>;
@@ -42,9 +43,11 @@ export function makeEmergencyHandler(aiBotsClient: IAIBotsClient, typing: ITypin
     const history = state.messages.slice(0, -1);
     try {
       const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage, history);
+      // Already in crisis — we only strip the tag, the isCrisis flag is moot here.
+      const { reply } = parseCrisisReply(result.reply);
       return {
         aiBotChatId: result.chatId,
-        pendingResponse: result.reply,
+        pendingResponse: reply,
         conversationPhase: 'crisis',
         crisisDetected: true,
       };
