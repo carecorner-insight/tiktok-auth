@@ -85,6 +85,7 @@
         <label><input id="autoscroll" type="checkbox" checked /> Auto-scroll</label>
         <button id="pauseBtn">Pause</button>
         <button id="clearBtn">Clear view</button>
+        <button id="captureBtn">Capture: …</button>
       </div>
     </header>
     <div id="feed"><div class="empty">Waiting for activity…</div></div>
@@ -174,6 +175,21 @@
         statusText.textContent = text;
       }
 
+      function toggleUat(enabled) {
+        fetch('/api/uat-logs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-uat-token': token },
+          body: JSON.stringify({ enabled })
+        }).then(function (r) {
+          if (!r.ok) throw new Error('http ' + r.status);
+          return r.json();
+        }).then(function (data) {
+          console.log('UAT logging toggled:', data);
+        }).catch(function (err) {
+          console.error('Failed to toggle UAT logging:', err);
+        });
+      }
+
       function poll() {
         if (paused) return;
         var url = '/api/uat-logs?token=' + encodeURIComponent(token) + (lastTs ? '&since=' + lastTs : '');
@@ -213,6 +229,12 @@
         });
         document.getElementById('clearBtn').addEventListener('click', function () {
           entries = []; seen = {}; render();
+        });
+        document.getElementById('captureBtn').addEventListener('click', function () {
+          var enabled = !this.dataset.enabled || this.dataset.enabled === 'false';
+          toggleUat(enabled);
+          this.dataset.enabled = enabled ? 'true' : 'false';
+          this.textContent = 'Capture: ' + (enabled ? 'ON' : 'OFF');
         });
       }
 

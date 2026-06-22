@@ -66,4 +66,12 @@ export async function readUatLogs(
   return entries;
 }
 
+export async function toggleUatLogging(redis: RedisClient, enabled: boolean): Promise<void> {
+  if (enabled) {
+    await redis.set('uat:enabled', '1', { ex: TTL_SECONDS });
+  } else {
+    await redis.del('uat:enabled');
+  }
+}
+
 export { providerFromChatId };

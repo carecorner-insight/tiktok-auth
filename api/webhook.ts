@@ -143,7 +143,7 @@ async function handleMessage(
 
     // UAT live-log capture is enabled only when UAT_LOG_TOKEN is set, so no
     // plaintext conversation content is buffered in production by default.
-    const uatEnabled = !!process.env.UAT_LOG_TOKEN;
+    const uatEnabled = (await redis.get('uat:enabled')) === '1';
 
     let result;
     let responseText = "I'm having trouble right now. Please try again in a moment.";
