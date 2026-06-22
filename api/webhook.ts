@@ -14,6 +14,7 @@ import { DifyClient } from '../src/services/difyClient';
 import { FallbackAIClient } from '../src/services/fallbackAIClient';
 import type { IPlatformAdapter } from '../src/types/platform';
 import type { Platform } from '../src/types/state';
+import { pushUatLog, providerFromChatId } from '../src/lib/uatLog';
 
 export const config = { runtime: 'nodejs', maxDuration: 60 };
 
@@ -140,6 +141,10 @@ async function handleMessage(
     const logUrl = process.env.POWER_AUTOMATE_WEBHOOK_URL;
     const logger = logUrl ? new SharePointLogger(logUrl) : null;
 
+    // UAT live-log capture is enabled only when UAT_LOG_TOKEN is set, so no
+    // plaintext conversation content is buffered in production by default.
+    const uatEnabled = !!process.env.UAT_LOG_TOKEN;
+
     let result;
     let responseText = "I'm having trouble right now. Please try again in a moment.";
     try {
@@ -149,11 +154,30 @@ async function handleMessage(
       console.error('[webhook] processMessage failed:', err);
       await adapter.sendMessage(msg.userId, responseText, msg.conversationId);
     
-      if (logger) {
-        const fallbackState = await services.session.load(msg.platform, msg.userId);
+      const fallbackState = await services.session.load(msg.platform, msg.userId);
+      if (logger && fallbackState) {
         // Await: fire-and-forget would be dropped when the serverless function
         // freezes before the HTTP POST completes. logger.log never throws.
-        if (fallbackState) await logger.log(fallbackState, msg.text, responseText);
+        await logger.log(fallbackState, msg.text, responseText);
+      }
+      if (uatEnabled) {
+        try {
+          await pushUatLog(redis, {
+            platform: msg.platform,
+            userId: msg.userId,
+            authorized: fallbackState?.isAuthorized ?? false,
+            userMessage: msg.text,
+            botReply: responseText,
+            phase: fallbackState?.conversationPhase ?? 'unknown',
+            tag: fallbackState?.tag ?? null,
+            crisis: fallbackState?.crisisDetected ?? false,
+            provider: providerFromChatId(fallbackState?.aiBotChatId),
+            latencyMs: Date.now() - tTotal,
+            error: true,
+          });
+        } catch (e) {
+          console.error('[uat] log push failed:', e);
+        }
       }
       return;
     }
@@ -169,6 +193,27 @@ async function handleMessage(
     // no perceived latency, and awaiting prevents the log POST being dropped
     // when the serverless function freezes. logger.log never throws.
     if (logger) await logger.log(result.state, msg.text, result.response);
+
+    if (uatEnabled) {
+      try {
+        await pushUatLog(redis, {
+          platform: msg.platform,
+          userId: msg.userId,
+          authorized: result.state.isAuthorized,
+          userMessage: msg.text,
+          botReply: result.response,
+          phase: result.state.conversationPhase,
+          tag: result.state.tag ?? null,
+          crisis: result.state.crisisDetected,
+          provider: providerFromChatId(result.state.aiBotChatId),
+          latencyMs: Date.now() - tTotal,
+          error: false,
+        });
+      } catch (e) {
+        console.error('[uat] log push failed:', e);
+      }
+    }
+
     console.log(`[perf] handleMessage total: ${Date.now() - tTotal}ms`);
   });
 }

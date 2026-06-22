@@ -7,6 +7,10 @@ export interface RedisClient {
   get(key: string): Promise<string | null>;
   set(key: string, value: unknown, opts?: { ex?: number; nx?: boolean }): Promise<'OK' | null>;
   del(key: string): Promise<unknown>;
+  lpush(key: string, ...values: string[]): Promise<number>;
+  ltrim(key: string, start: number, stop: number): Promise<unknown>;
+  lrange(key: string, start: number, stop: number): Promise<string[]>;
+  expire(key: string, seconds: number): Promise<unknown>;
 }
 
 class RedisWrapper implements RedisClient {
@@ -37,6 +41,22 @@ class RedisWrapper implements RedisClient {
 
   del(key: string): Promise<unknown> {
     return this.client.del(key);
+  }
+
+  lpush(key: string, ...values: string[]): Promise<number> {
+    return this.client.lpush(key, ...values);
+  }
+
+  ltrim(key: string, start: number, stop: number): Promise<unknown> {
+    return this.client.ltrim(key, start, stop);
+  }
+
+  lrange(key: string, start: number, stop: number): Promise<string[]> {
+    return this.client.lrange(key, start, stop);
+  }
+
+  expire(key: string, seconds: number): Promise<unknown> {
+    return this.client.expire(key, seconds);
   }
 }
 

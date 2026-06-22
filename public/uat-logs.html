@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CareyBot — UAT Live Log</title>
+  <style>
+    :root {
+      --bg: #0f1419; --panel: #1a2029; --border: #2a3340; --text: #e6edf3;
+      --muted: #8b98a5; --user: #58a6ff; --bot: #3fb950;
+      --low: #3fb950; --elevated: #d29922; --moderate: #db6d28; --high: #f85149; --crisis: #f85149;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text); font-size: 14px;
+    }
+    header {
+      position: sticky; top: 0; z-index: 10; background: var(--panel);
+      border-bottom: 1px solid var(--border); padding: 12px 20px;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    .status { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+    .dot.live { background: var(--bot); box-shadow: 0 0 6px var(--bot); }
+    .dot.err { background: var(--high); }
+    .controls { margin-left: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .controls input, .controls button {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+    }
+    .controls button { cursor: pointer; }
+    .controls button:hover { border-color: var(--user); }
+    .controls label { color: var(--muted); display: flex; align-items: center; gap: 5px; }
+    #feed { padding: 16px 20px; max-width: 1100px; margin: 0 auto; }
+    .turn {
+      background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--border);
+      border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;
+    }
+    .turn.tag-low { border-left-color: var(--low); }
+    .turn.tag-elevated { border-left-color: var(--elevated); }
+    .turn.tag-moderate { border-left-color: var(--moderate); }
+    .turn.tag-high, .turn.crisis { border-left-color: var(--crisis); }
+    .turn.crisis { background: #2a1416; }
+    .meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+    .badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .badge.platform { background: var(--border); color: var(--text); }
+    .badge.tag-low { background: var(--low); color: #04260f; }
+    .badge.tag-elevated { background: var(--elevated); color: #2a1d00; }
+    .badge.tag-moderate { background: var(--moderate); color: #2a1500; }
+    .badge.tag-high { background: var(--high); color: #2a0608; }
+    .badge.crisis { background: var(--crisis); color: #fff; }
+    .badge.err { background: var(--high); color: #fff; }
+    .badge.provider { background: #1f6feb33; color: var(--user); border: 1px solid #1f6feb55; }
+    .uid { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+    .msg { margin: 4px 0; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+    .msg .who { font-weight: 600; margin-right: 6px; }
+    .msg.user .who { color: var(--user); }
+    .msg.bot .who { color: var(--bot); }
+    .empty { color: var(--muted); text-align: center; padding: 60px 20px; }
+    .gate { max-width: 420px; margin: 80px auto; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 28px; }
+    .gate h2 { margin-top: 0; }
+    .gate input { width: 100%; margin: 12px 0; }
+    .gate button { width: 100%; background: var(--user); color: #04101f; border: none; font-weight: 600; padding: 10px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div id="gate" class="gate hidden">
+    <h2>UAT Live Log</h2>
+    <p style="color:var(--muted)">Enter the access token to view live conversations.</p>
+    <input id="tokenInput" type="password" placeholder="Access token" />
+    <button id="tokenBtn">View logs</button>
+    <p id="gateErr" style="color:var(--high);min-height:18px"></p>
+  </div>
+
+  <div id="app" class="hidden">
+    <header>
+      <h1>CareyBot — UAT Live Log</h1>
+      <div class="status"><span id="dot" class="dot"></span><span id="statusText">connecting…</span></div>
+      <div class="controls">
+        <input id="filter" type="text" placeholder="Filter by user ID…" />
+        <label><input id="crisisOnly" type="checkbox" /> Crisis/high only</label>
+        <label><input id="autoscroll" type="checkbox" checked /> Auto-scroll</label>
+        <button id="pauseBtn">Pause</button>
+        <button id="clearBtn">Clear view</button>
+      </div>
+    </header>
+    <div id="feed"><div class="empty">Waiting for activity…</div></div>
+  </div>
+
+  <script>
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var token = params.get('token') || '';
+      var POLL_MS = 2000;
+      var seen = {};           // id -> true
+      var entries = [];        // newest-first
+      var lastTs = 0;
+      var paused = false;
+      var timer = null;
+
+      var gate = document.getElementById('gate');
+      var app = document.getElementById('app');
+      var feed = document.getElementById('feed');
+      var dot = document.getElementById('dot');
+      var statusText = document.getElementById('statusText');
+
+      function esc(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+      function timeStr(ts) {
+        var d = new Date(ts);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+
+      function passesFilter(e) {
+        var f = document.getElementById('filter').value.trim().toLowerCase();
+        if (f && e.userId.toLowerCase().indexOf(f) === -1) return false;
+        if (document.getElementById('crisisOnly').checked && !(e.crisis || e.tag === 'high')) return false;
+        return true;
+      }
+
+      function render() {
+        var visible = entries.filter(passesFilter);
+        if (!visible.length) {
+          feed.innerHTML = '<div class="empty">No matching activity.</div>';
+          return;
+        }
+        var html = '';
+        for (var i = 0; i < visible.length; i++) {
+          var e = visible[i];
+          var tagClass = e.tag ? 'tag-' + e.tag : '';
+          var crisisClass = e.crisis ? 'crisis' : '';
+          html += '<div class="turn ' + tagClass + ' ' + crisisClass + '">';
+          html += '<div class="meta">';
+          html += '<span>' + timeStr(e.ts) + '</span>';
+          html += '<span class="badge platform">' + esc(e.platform) + '</span>';
+          html += '<span class="uid">' + esc(e.userId) + '</span>';
+          if (e.tag) html += '<span class="badge tag-' + e.tag + '">' + esc(e.tag) + '</span>';
+          if (e.crisis) html += '<span class="badge crisis">CRISIS</span>';
+          html += '<span class="badge provider">' + esc(e.provider) + '</span>';
+          html += '<span>' + esc(e.phase) + '</span>';
+          html += '<span>' + e.latencyMs + 'ms</span>';
+          if (e.error) html += '<span class="badge err">ERROR</span>';
+          html += '</div>';
+          html += '<div class="msg user"><span class="who">User</span>' + esc(e.userMessage) + '</div>';
+          html += '<div class="msg bot"><span class="who">Carey</span>' + esc(e.botReply) + '</div>';
+          html += '</div>';
+        }
+        feed.innerHTML = html;
+        if (document.getElementById('autoscroll').checked) window.scrollTo(0, 0);
+      }
+
+      function ingest(newOnes) {
+        var added = 0;
+        // API returns newest-first; insert so our array stays newest-first.
+        for (var i = newOnes.length - 1; i >= 0; i--) {
+          var e = newOnes[i];
+          if (seen[e.id]) continue;
+          seen[e.id] = true;
+          entries.unshift(e);
+          if (e.ts > lastTs) lastTs = e.ts;
+          added++;
+        }
+        if (entries.length > 300) entries = entries.slice(0, 300);
+        if (added) render();
+      }
+
+      function setStatus(state, text) {
+        dot.className = 'dot' + (state ? ' ' + state : '');
+        statusText.textContent = text;
+      }
+
+      function poll() {
+        if (paused) return;
+        var url = '/api/uat-logs?token=' + encodeURIComponent(token) + (lastTs ? '&since=' + lastTs : '');
+        fetch(url, { cache: 'no-store' })
+          .then(function (r) {
+            if (r.status === 401) throw new Error('unauthorized');
+            if (!r.ok) throw new Error('http ' + r.status);
+            return r.json();
+          })
+          .then(function (data) {
+            ingest(data.entries || []);
+            setStatus('live', 'live · ' + entries.length + ' turns');
+          })
+          .catch(function (err) {
+            if (err.message === 'unauthorized') {
+              clearInterval(timer);
+              showGate('Invalid or expired token.');
+              return;
+            }
+            setStatus('err', 'reconnecting…');
+          });
+      }
+
+      function start() {
+        app.classList.remove('hidden');
+        gate.classList.add('hidden');
+        poll();
+        timer = setInterval(poll, POLL_MS);
+
+        document.getElementById('filter').addEventListener('input', render);
+        document.getElementById('crisisOnly').addEventListener('change', render);
+        document.getElementById('pauseBtn').addEventListener('click', function () {
+          paused = !paused;
+          this.textContent = paused ? 'Resume' : 'Pause';
+          setStatus(paused ? '' : 'live', paused ? 'paused' : 'live');
+          if (!paused) poll();
+        });
+        document.getElementById('clearBtn').addEventListener('click', function () {
+          entries = []; seen = {}; render();
+        });
+      }
+
+      function showGate(msg) {
+        gate.classList.remove('hidden');
+        app.classList.add('hidden');
+        document.getElementById('gateErr').textContent = msg || '';
+        document.getElementById('tokenBtn').onclick = function () {
+          token = document.getElementById('tokenInput').value.trim();
+          if (token) { history.replaceState(null, '', '?token=' + encodeURIComponent(token)); start(); }
+        };
+        document.getElementById('tokenInput').addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter') document.getElementById('tokenBtn').click();
+        });
+      }
+
+      if (token) start(); else showGate('');
+    })();
+  </script>
+</body>
+</html>
