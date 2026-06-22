@@ -30,6 +30,7 @@ export function makeEmergencyHandler(aiBotsClient: IAIBotsClient, typing: ITypin
         `Do not run triage or screener. Do not reference previous sessions. ` +
         `Your role is to keep the user engaged, validate their feelings, and gently reinforce ` +
         `that they should reach out to 1771 (National Mindline) or 995 for immediate danger. ` +
+        `Do not remind too incessantly about the hotlines, but do look for cues that they may be in crisis and gently nudge them to use those resources if they haven't already. ` +
         `Stay calm, warm, and present. Do not end the conversation.`
       : undefined;
 
