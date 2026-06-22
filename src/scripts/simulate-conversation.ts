@@ -1,31 +1,34 @@
 /**
- * Automated conversation simulator for CareyBot.
+ * Automated conversation simulator for CareyBot — drives the LIVE deployment.
  *
- * Calls processMessage() directly — no HTTP server needed.
- * Uses an in-memory session store and an always-authorized whitelist
- * so the simulation runs without Redis.
+ * Instead of running the graph in-process with mocked services, this posts each
+ * turn to the deployment's /api/sim endpoint (token-gated). That way the real
+ * Redis, the real AIBots backend (called from the deployment's whitelisted IP),
+ * and the full static questionnaire all run for real. OpenAI roleplays the
+ * "youth" locally to generate each next message.
+ *
+ * Prerequisites on the deployment:
+ *   - api/sim.ts deployed
+ *   - SIM_TOKEN set (enables the endpoint)
+ *   - the usual runtime env: REDIS_URL, SESSION_ENCRYPTION_KEY,
+ *     DIRECTUS_CREATE_CHAT_URL, DIRECTUS_SEND_MESSAGE_URL
  *
  * Usage:
- *   npx ts-node -r dotenv/config src/scripts/simulate-conversation.ts
- *
- * Required env vars:
- *   OPENAI_API_KEY
- *   DIRECTUS_CREATE_CHAT_URL / DIRECTUS_SEND_MESSAGE_URL  (or DIFY_API_URL + DIFY_API_KEY)
+ *   SIM_BASE_URL=https://<your-deployment> \
+ *   SIM_TOKEN=<the-token> \
+ *   OPENAI_API_KEY=sk-... \
+ *     npx ts-node -r dotenv/config src/scripts/simulate-conversation.ts [persona]
  */
 
 import OpenAI from 'openai';
-import { processMessage } from '../graph/runner';
-import { AIBotsClient } from '../services/aiBotsClient';
-import { DifyClient } from '../services/difyClient';
-import { FallbackAIClient } from '../services/fallbackAIClient';
-import type { CareyBotState, Platform } from '../types/state';
-import type { NormalizedMessage } from '../types/platform';
+import type { Platform } from '../types/state';
 
 // ── Simulation config ──────────────────────────────────────────────────────────
 
-const SIM_USER_ID   = 'sim-user-001';
+const SIM_BASE_URL = (process.env.SIM_BASE_URL ?? '').replace(/\/$/, '');
+const SIM_TOKEN    = process.env.SIM_TOKEN ?? '';
 const SIM_PLATFORM: Platform = 'telegram';
-const MAX_TURNS     = 10;
+const MAX_TURNS    = 10;
 
 const PERSONAS: Record<string, string> = {
   stressed_student:
@@ -43,46 +46,45 @@ const PERSONAS: Record<string, string> = {
     'You are resistant and dismissive. Respond with exactly one short message at a time.',
 };
 
-// ── In-memory services (no Redis / no real whitelist needed) ──────────────────
+// ── Live deployment client ──────────────────────────────────────────────────────
 
-const sessions = new Map<string, CareyBotState>();
+interface SimReply {
+  response: string;
+  state: {
+    conversationPhase: string;
+    questionIndex: number;
+    tag: string | null;
+    crisisDetected: boolean;
+    selectedOption: number | null;
+    isAuthorized: boolean;
+  };
+}
 
-const mockServices = {
-  whitelist: {
-    isAuthorized: async (_platform: Platform, _userId: string) => true,
-  },
-  session: {
-    load:  async (platform: Platform, userId: string) =>
-      sessions.get(`${platform}:${userId}`) ?? null,
-    save:  async (state: CareyBotState) =>
-      void sessions.set(`${state.platform}:${state.userId}`, state),
-    clear: async (platform: Platform, userId: string) =>
-      void sessions.delete(`${platform}:${userId}`),
-  },
-  aiBots: new FallbackAIClient(
-    new AIBotsClient(
-      process.env.DIRECTUS_CREATE_CHAT_URL ?? '',
-      process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
-    ),
-    new DifyClient(
-      process.env.DIFY_API_URL ?? '',
-      process.env.DIFY_API_KEY ?? '',
-    ),
-  ),
-  typing: {
-    sendTypingIndicator: async (_userId: string) => {}, // no-op in simulation
-  },
-};
+async function sendToBot(userId: string, text: string, reset = false): Promise<SimReply> {
+  const res = await fetch(`${SIM_BASE_URL}/api/sim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-sim-token': SIM_TOKEN },
+    body: JSON.stringify({ platform: SIM_PLATFORM, userId, text, reset }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`/api/sim returned ${res.status} ${res.statusText}: ${detail}`);
+  }
+
+  return (await res.json()) as SimReply;
+}
 
 // ── Simulator ─────────────────────────────────────────────────────────────────
 
 async function runSimulation(personaKey: keyof typeof PERSONAS = 'stressed_student') {
   const openai   = new OpenAI();
   const persona  = PERSONAS[personaKey];
-  const simId    = `sim-${Date.now()}`;
+  const userId   = `sim-${Date.now()}`; // unique per run → fresh session
 
   console.log(`\n${'='.repeat(60)}`);
-  console.log(`SIMULATION: ${personaKey}  (id: ${simId})`);
+  console.log(`SIMULATION: ${personaKey}  (user: ${userId})`);
+  console.log(`TARGET: ${SIM_BASE_URL}/api/sim`);
   console.log('='.repeat(60));
 
   // OpenAI conversation history used to generate the next youth message.
@@ -93,18 +95,12 @@ async function runSimulation(personaKey: keyof typeof PERSONAS = 'stressed_stude
     { role: 'system', content: persona },
   ];
 
-  const msg = (text: string): NormalizedMessage => ({
-    platform:  SIM_PLATFORM,
-    userId:    SIM_USER_ID,
-    text,
-    timestamp: Date.now(),
-    raw:       {},
-  });
-
-  // ── Turn 0: let CareyBot open the conversation naturally ──
-  const opening = await processMessage(msg('hi'), mockServices);
+  // ── Turn 0: reset the session and let CareyBot open the conversation ──
+  const opening = await sendToBot(userId, 'hi', true);
   console.log(`\n[CareyBot]: ${opening.response}`);
   openaiHistory.push({ role: 'user', content: opening.response });
+
+  let last: SimReply = opening;
 
   // ── Subsequent turns ──
   for (let turn = 1; turn <= MAX_TURNS; turn++) {
@@ -118,14 +114,13 @@ async function runSimulation(personaKey: keyof typeof PERSONAS = 'stressed_stude
     console.log(`\n[Youth]: ${youthText}`);
     openaiHistory.push({ role: 'assistant', content: youthText });
 
-    // Send to CareyBot
-    const result = await processMessage(msg(youthText), mockServices);
-    console.log(`\n[CareyBot]: ${result.response}`);
-    openaiHistory.push({ role: 'user', content: result.response });
+    // Send to the live bot
+    last = await sendToBot(userId, youthText);
+    console.log(`\n[CareyBot]: ${last.response}`);
+    openaiHistory.push({ role: 'user', content: last.response });
 
     // Stop if conversation has reached a terminal state
-    const phase = result.state.conversationPhase;
-    if (phase === 'ended') {
+    if (last.state.conversationPhase === 'ended') {
       console.log('\n[Simulation ended — conversation phase: ended]');
       break;
     }
@@ -134,11 +129,20 @@ async function runSimulation(personaKey: keyof typeof PERSONAS = 'stressed_stude
   console.log(`\n${'='.repeat(60)}`);
   console.log('SIMULATION COMPLETE');
   console.log('Final state:', {
-    phase:  sessions.get(`${SIM_PLATFORM}:${SIM_USER_ID}`)?.conversationPhase,
-    tag:    sessions.get(`${SIM_PLATFORM}:${SIM_USER_ID}`)?.tag,
-    crisis: sessions.get(`${SIM_PLATFORM}:${SIM_USER_ID}`)?.crisisDetected,
+    phase:  last.state.conversationPhase,
+    tag:    last.state.tag,
+    crisis: last.state.crisisDetected,
   });
   console.log('='.repeat(60));
+}
+
+// ── Entry ───────────────────────────────────────────────────────────────────────
+
+if (!SIM_BASE_URL || !SIM_TOKEN) {
+  console.error('Set SIM_BASE_URL and SIM_TOKEN (and OPENAI_API_KEY) before running.');
+  console.error('  SIM_BASE_URL=https://<deployment> SIM_TOKEN=<token> OPENAI_API_KEY=sk-... \\');
+  console.error('    npx ts-node -r dotenv/config src/scripts/simulate-conversation.ts [persona]');
+  process.exit(1);
 }
 
 // Run the persona from the first CLI arg, defaulting to stressed_student
