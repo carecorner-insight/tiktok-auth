@@ -15,9 +15,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
-      - run: npm ci
+      # `npm install` (not `npm ci`) — the committed lockfile was normalized by a
+      # newer npm and npm 10.x flags it as out-of-sync under `npm ci` (EUSAGE).
+      # install is lenient and reconciles instead of failing.
+      - run: npm install --no-audit --no-fund
 
       - name: Run evaluation harness
         run: npx ts-node src/scripts/run-eval.ts
