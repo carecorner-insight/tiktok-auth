@@ -1,0 +1,27 @@
+name: CareyBot Eval
+
+on:
+  schedule:
+    # 00:00 UTC every other day (GitHub may delay a few minutes under load)
+    - cron: '0 0 */2 * *'
+  workflow_dispatch: {} # allows manual "Run workflow" for testing
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+
+      - name: Run evaluation harness
+        run: npx ts-node src/scripts/run-eval.ts
+        env:
+          SIM_BASE_URL: ${{ secrets.SIM_BASE_URL }}
+          SIM_TOKEN: ${{ secrets.SIM_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

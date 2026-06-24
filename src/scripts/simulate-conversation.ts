@@ -28,7 +28,7 @@ import type { Platform } from '../types/state';
 const SIM_BASE_URL = (process.env.SIM_BASE_URL ?? '').replace(/\/$/, '');
 const SIM_TOKEN    = process.env.SIM_TOKEN ?? '';
 const SIM_PLATFORM: Platform = 'telegram';
-const MAX_TURNS    = 10;
+const MAX_TURNS    = 20;
 
 const PERSONAS: Record<string, string> = {
   stressed_student:
