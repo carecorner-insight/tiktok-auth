@@ -7,6 +7,7 @@ const OPTION_NODE: Record<number, string> = {
   2: 'wellbeingCheckNode',
   3: 'stressManagementNode',
   4: 'resourceRedirectNode',
+  5: 'socialCoachNode',
 };
 
 const MENU_KEYWORDS = new Set(['menu', 'back', 'back to menu', 'change', 'options']);

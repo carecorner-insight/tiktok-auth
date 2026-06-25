@@ -2,7 +2,14 @@ import { timingSafeEqual } from 'crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 import { getRedis } from '../src/lib/redis';
-import { pushEvalSummary, readEvalSummaries, type EvalSummary } from '../src/lib/evalResults';
+import {
+  pushEvalSummary,
+  readEvalSummaries,
+  setFullResult,
+  getFullResult,
+  resultId,
+  type EvalSummary,
+} from '../src/lib/evalResults';
 
 export const config = { runtime: 'nodejs' };
 
@@ -36,7 +43,9 @@ async function handlePost(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'runId and persona are required' });
   }
 
+  const id = resultId(String(r.runId), String(r.persona));
   const summary: EvalSummary = {
+    id,
     runId: String(r.runId),
     ts: typeof r.ts === 'number' ? r.ts : Date.now(),
     persona: String(r.persona),
@@ -56,7 +65,10 @@ async function handlePost(req: VercelRequest, res: VercelResponse) {
   };
 
   try {
-    await pushEvalSummary(getRedis(), summary);
+    const redis = getRedis();
+    await pushEvalSummary(redis, summary);
+    // Store the full record (transcript + assertion detail) for drill-down.
+    await setFullResult(redis, id, r);
   } catch (err) {
     console.error('[eval-results] Redis write failed:', err);
     return res.status(500).json({ error: 'Failed to store summary' });
@@ -89,8 +101,18 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const results = await readEvalSummaries(getRedis());
+    const redis = getRedis();
     res.setHeader('Cache-Control', 'no-store');
+
+    // Drill-down: ?id=<runId>__<persona> → full record (transcript + detail).
+    const idParam = req.query['id'];
+    if (typeof idParam === 'string' && idParam) {
+      const full = await getFullResult(redis, idParam);
+      if (!full) return res.status(404).json({ error: 'Not found' });
+      return res.status(200).json({ result: full });
+    }
+
+    const results = await readEvalSummaries(redis);
     return res.status(200).json({ serverTime: Date.now(), results });
   } catch (err) {
     console.error('[eval-results] read failed:', err);

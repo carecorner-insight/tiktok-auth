@@ -82,6 +82,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         process.env.DIFY_API_KEY ?? '',
       ),
     ),
+    socialCoach: new FallbackAIClient(
+      new AIBotsClient(
+        process.env.DIRECTUS_SOCIALCOACH_CREATE_CHAT_URL ?? '',
+        process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
+      ),
+      new DifyClient(
+        process.env.DIFY_API_URL ?? '',
+        process.env.DIFY_SOCIALCOACH_API_KEY ?? '',
+      ),
+    ),
     typing: { sendTypingIndicator: async () => {} },
   };
 

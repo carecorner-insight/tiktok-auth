@@ -11,7 +11,7 @@ export type ConversationPhase =
   | 'crisis'
   | 'ended';
 
-export type MenuOption = 1 | 2 | 3 | 4;
+export type MenuOption = 1 | 2 | 3 | 4 | 5;
 
 export interface Message {
   role: 'user' | 'assistant';

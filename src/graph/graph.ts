@@ -18,6 +18,7 @@ import { makeAuthGuard } from '../nodes/authGuard';
 import { makeFreeTextNode } from '../nodes/freeTextNode';
 import { makeWellbeingCheckNode } from '../nodes/wellbeingCheckNode';
 import { makeStressManagementNode } from '../nodes/stressManagementNode';
+import { makeSocialCoachNode } from '../nodes/socialCoachNode';
 import { makeSessionPersister } from '../nodes/sessionPersister';
 import { safetyCheckNode } from '../nodes/safetyCheckNode';
 import { safetyGateNode } from '../nodes/safetyGateNode';
@@ -45,6 +46,7 @@ export interface GraphServices {
   whitelist: IWhitelistService;
   session: ISessionManager;
   aiBots: IAIBotsClient;
+  socialCoach: IAIBotsClient; // separate AIBots/Directus bot for menu option 5
   typing: ITypingIndicator;
 }
 
@@ -107,6 +109,7 @@ function routeFromOptionRouter(state: typeof GraphAnnotation.State): string {
     2: 'wellbeingCheckNode',
     3: 'stressManagementNode',
     4: 'resourceRedirectNode',
+    5: 'socialCoachNode',
   };
   const next = map[state.selectedOption];
   console.log(`[route] optionRouter → ${next} (selectedOption=${state.selectedOption})`);
@@ -121,6 +124,7 @@ export function buildGraph(services: GraphServices) {
   const freeTextNode     = makeFreeTextNode(services.aiBots, services.typing);
   const wellbeingCheck   = makeWellbeingCheckNode(services.aiBots, services.typing);
   const stressMgmt       = makeStressManagementNode(services.aiBots, services.typing);
+  const socialCoach      = makeSocialCoachNode(services.socialCoach, services.typing);
   const resourceRedirect = makeResourceRedirectNode(services.aiBots, services.typing);
   const sessionPersist   = makeSessionPersister(services.session);
 
@@ -141,6 +145,7 @@ export function buildGraph(services: GraphServices) {
     .addNode('freeTextNode',         freeTextNode)
     .addNode('wellbeingCheckNode',   wellbeingCheck)
     .addNode('stressManagementNode', stressMgmt)
+    .addNode('socialCoachNode',      socialCoach)
     .addNode('resourceRedirectNode', resourceRedirect)
     .addNode('sessionPersister',     sessionPersist)
 
@@ -187,6 +192,7 @@ export function buildGraph(services: GraphServices) {
       wellbeingCheckNode:   'wellbeingCheckNode',
       stressManagementNode: 'stressManagementNode',
       resourceRedirectNode: 'resourceRedirectNode',
+      socialCoachNode:      'socialCoachNode',
       sessionPersister:     'sessionPersister',
     })
 
@@ -201,6 +207,7 @@ export function buildGraph(services: GraphServices) {
     .addEdge('freeTextNode',         'sessionPersister')
     .addEdge('wellbeingCheckNode',   'sessionPersister')
     .addEdge('stressManagementNode', 'sessionPersister')
+    .addEdge('socialCoachNode',      'sessionPersister')
     .addEdge('resourceRedirectNode', 'sessionPersister')
     .addEdge('sessionPersister',     END);
 

@@ -78,6 +78,7 @@
   <div id="app" class="hidden">
     <header>
       <h1>CareyBot — UAT Live Log</h1>
+      <a id="navEval" href="#" style="color:var(--muted);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px">Eval Dashboard →</a>
       <div class="status"><span id="dot" class="dot"></span><span id="statusText">connecting…</span></div>
       <div class="controls">
         <input id="filter" type="text" placeholder="Filter by user ID…" />
@@ -219,6 +220,7 @@
         poll();
         timer = setInterval(poll, POLL_MS);
 
+        document.getElementById('navEval').href = 'eval-dashboard.html?token=' + encodeURIComponent(token);
         document.getElementById('filter').addEventListener('input', render);
         document.getElementById('crisisOnly').addEventListener('change', render);
         document.getElementById('pauseBtn').addEventListener('click', function () {

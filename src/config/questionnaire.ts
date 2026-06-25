@@ -42,7 +42,8 @@ export const MENU_TEXT =
   `1. Talk about something that's been bothering me\n` +
   `2. Do a quick wellbeing self-check\n` +
   `3. Learn ways to manage stress\n` +
-  `4. Find support / resources`;
+  `4. Find support / resources\n` +
+  `5. Practise a social situation (social coach)`;
 
 export const EMERGENCY_MESSAGE =
   "I'm really concerned about your safety right now.\n\n" +

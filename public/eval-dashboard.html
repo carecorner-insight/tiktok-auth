@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CareyBot — Eval Dashboard</title>
+  <style>
+    :root {
+      --bg: #0f1419; --panel: #1a2029; --border: #2a3340; --text: #e6edf3;
+      --muted: #8b98a5; --user: #58a6ff; --bot: #3fb950;
+      --pass: #3fb950; --fail: #f85149; --warn: #d29922; --neutral: #6e7681;
+      --low: #3fb950; --elevated: #d29922; --moderate: #db6d28; --high: #f85149;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text); font-size: 14px; }
+    header { position: sticky; top: 0; z-index: 10; background: var(--panel);
+      border-bottom: 1px solid var(--border); padding: 12px 20px;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    .nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 6px;
+      border: 1px solid var(--border); font-size: 13px; }
+    .nav a.active { color: var(--text); border-color: var(--user); }
+    .nav a:hover { border-color: var(--user); }
+    .spacer { margin-left: auto; }
+    button { background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+    button:hover { border-color: var(--user); }
+    main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+    .muted { color: var(--muted); }
+    /* KPIs */
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; margin-bottom: 24px; }
+    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+    .kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .kpi .value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+    h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+      border-bottom: 1px solid var(--border); padding-bottom: 6px; margin: 28px 0 14px; }
+    /* tables */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover td { background: #20283440; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+    .pill.pass { background: var(--pass); color: #04260f; }
+    .pill.fail { background: var(--fail); color: #2a0608; }
+    .pill.err  { background: var(--neutral); color: #fff; }
+    .pill.warn { background: var(--warn); color: #2a1d00; }
+    .pill.tag-low { background: var(--low); color: #04260f; }
+    .pill.tag-elevated { background: var(--elevated); color: #2a1d00; }
+    .pill.tag-moderate { background: var(--moderate); color: #2a1500; }
+    .pill.tag-high { background: var(--high); color: #2a0608; }
+    .mono { font-family: ui-monospace, Menlo, monospace; }
+    /* trend grid */
+    .grid td, .grid th { text-align: center; }
+    .cell { width: 26px; height: 22px; border-radius: 4px; display: inline-block; }
+    .cell.pass { background: var(--pass); } .cell.fail { background: var(--fail); }
+    .cell.err { background: var(--neutral); } .cell.none { background: #20283480; }
+    .legend { display: flex; gap: 14px; color: var(--muted); font-size: 12px; margin: 8px 0 0; align-items: center; }
+    .legend .cell { width: 14px; height: 14px; vertical-align: middle; margin-right: 4px; }
+    /* gate */
+    .gate { max-width: 420px; margin: 80px auto; background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 28px; }
+    .gate input { width: 100%; margin: 12px 0; padding: 10px; background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; }
+    .gate button { width: 100%; background: var(--user); color: #04101f; border: none; font-weight: 600; padding: 10px; }
+    .hidden { display: none; }
+    /* modal */
+    .overlay { position: fixed; inset: 0; background: #000a; display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50; }
+    .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 760px;
+      width: 100%; max-height: 86vh; overflow-y: auto; padding: 20px; }
+    .modal h3 { margin: 0 0 4px; }
+    .modal .close { float: right; }
+    .bubble { margin: 6px 0; line-height: 1.45; white-space: pre-wrap; word-break: break-word; padding: 8px 12px;
+      border-radius: 10px; max-width: 85%; }
+    .bubble.youth { background: #1f3a5f; margin-left: auto; }
+    .bubble.carey { background: #143a22; }
+    .turnmeta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .assert { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div id="gate" class="gate hidden">
+    <h2 style="border:none;color:var(--text)">Eval Dashboard</h2>
+    <p class="muted">Enter the access token to view test metrics.</p>
+    <input id="tokenInput" type="password" placeholder="Access token" />
+    <button id="tokenBtn">View dashboard</button>
+    <p id="gateErr" style="color:var(--fail);min-height:18px"></p>
+  </div>
+
+  <div id="app" class="hidden">
+    <header>
+      <h1>CareyBot — Eval Dashboard</h1>
+      <nav class="nav">
+        <a id="navLog" href="#">Live Log</a>
+        <a class="active" href="#">Eval Dashboard</a>
+      </nav>
+      <div class="spacer"></div>
+      <span id="status" class="muted"></span>
+      <button id="refreshBtn">Refresh</button>
+    </header>
+    <main>
+      <div class="kpis" id="kpis"></div>
+
+      <h2>Latest run — scorecard</h2>
+      <div id="scorecard"><p class="muted">Loading…</p></div>
+
+      <h2>Pass/fail over time <span class="muted" style="text-transform:none;font-weight:400">(each column = one run, oldest → newest)</span></h2>
+      <div id="trend"></div>
+      <div class="legend">
+        <span><span class="cell pass"></span>pass</span>
+        <span><span class="cell fail"></span>fail</span>
+        <span><span class="cell err"></span>error</span>
+        <span><span class="cell none"></span>not run</span>
+      </div>
+    </main>
+  </div>
+
+  <div id="modalRoot"></div>
+
+  <script>
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var token = params.get('token') || '';
+      var summaries = [];
+
+      var gate = document.getElementById('gate');
+      var app = document.getElementById('app');
+      var statusEl = document.getElementById('status');
+
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+      function fmtTime(ts) { return new Date(ts).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); }
+      function api(extra) { return '/api/eval-results?token=' + encodeURIComponent(token) + (extra || ''); }
+
+      // ── data shaping ──
+      function groupRuns(rows) {
+        var byRun = {};
+        rows.forEach(function (r) {
+          (byRun[r.runId] = byRun[r.runId] || { runId: r.runId, ts: r.ts, rows: [] }).rows.push(r);
+          if (r.ts < byRun[r.runId].ts) byRun[r.runId].ts = r.ts;
+        });
+        return Object.values(byRun).sort(function (a, b) { return a.ts - b.ts; }); // oldest → newest
+      }
+
+      function renderKpis(runs) {
+        var latest = runs[runs.length - 1];
+        var personas = {};
+        summaries.forEach(function (r) { personas[r.persona] = true; });
+        var passRate = '—';
+        if (latest) {
+          var done = latest.rows.filter(function (r) { return r.status === 'completed'; });
+          var passed = done.filter(function (r) { return r.passed; }).length;
+          passRate = done.length ? Math.round((passed / done.length) * 100) + '%' : '—';
+        }
+        var errCount = latest ? latest.rows.filter(function (r) { return r.status === 'error'; }).length : 0;
+        var kpis = [
+          { label: 'Runs', value: runs.length },
+          { label: 'Personas', value: Object.keys(personas).length },
+          { label: 'Latest pass rate', value: passRate },
+          { label: 'Errors (latest run)', value: errCount },
+          { label: 'Last run', value: latest ? fmtTime(latest.ts) : '—' },
+        ];
+        document.getElementById('kpis').innerHTML = kpis.map(function (k) {
+          return '<div class="kpi"><div class="label">' + k.label + '</div><div class="value">' + k.value + '</div></div>';
+        }).join('');
+      }
+
+      function tagPill(tag) { return tag ? '<span class="pill tag-' + esc(tag) + '">' + esc(tag) + '</span>' : '<span class="muted">—</span>'; }
+
+      function renderScorecard(runs) {
+        var latest = runs[runs.length - 1];
+        var el = document.getElementById('scorecard');
+        if (!latest) { el.innerHTML = '<p class="muted">No runs yet.</p>'; return; }
+        var rows = latest.rows.slice().sort(function (a, b) { return a.persona.localeCompare(b.persona); });
+        var head = '<tr><th>Persona</th><th>Type</th><th>Outcome</th><th>Status</th><th>Result</th>' +
+          '<th>Present %</th><th>Forbidden hits</th><th>Wellbeing</th><th>Final tag</th><th>Notes</th></tr>';
+        var body = rows.map(function (r) {
+          var result = r.status === 'error' ? '<span class="pill err">ERROR</span>'
+            : (r.passed ? '<span class="pill pass">PASS</span>' : '<span class="pill fail">FAIL</span>');
+          var present = r.referralPresentPct == null ? '<span class="muted">n/a</span>' : r.referralPresentPct + '%';
+          var wb = r.wellbeingCheckReached == null ? '<span class="muted">—</span>'
+            : (r.wellbeingCheckReached ? '<span class="pill pass">yes</span>' : '<span class="pill warn">no</span>');
+          var notes = [];
+          if (r.userType === 'troll' && r.referralAbsentCount > 0) notes.push('<span class="pill fail">PROMPT LEAK</span>');
+          if (r.userType === 'elevated' && (r.finalTag === 'high' || r.crisisDetected)) notes.push('<span class="pill warn">over-escalated?</span>');
+          if (r.userType === 'crisis' && !r.crisisDetected) notes.push('<span class="pill fail">no crisis route</span>');
+          return '<tr class="clickable" data-id="' + esc(r.id) + '">' +
+            '<td class="mono">' + esc(r.persona) + '</td>' +
+            '<td>' + esc(r.userType) + '</td>' +
+            '<td class="muted">' + esc(r.outcomeLabel) + '</td>' +
+            '<td>' + (r.status === 'error' ? '<span class="pill err">error</span>' : 'completed') + '</td>' +
+            '<td>' + result + '</td>' +
+            '<td>' + present + '</td>' +
+            '<td>' + (r.referralAbsentCount > 0 ? '<span class="pill fail">' + r.referralAbsentCount + '</span>' : '0') + '</td>' +
+            '<td>' + wb + '</td>' +
+            '<td>' + tagPill(r.finalTag) + '</td>' +
+            '<td>' + (notes.join(' ') || '') + '</td>' +
+          '</tr>';
+        }).join('');
+        el.innerHTML = '<table>' + head + body + '</table><p class="muted" style="margin-top:8px">Click a row to view the transcript + assertion detail.</p>';
+        el.querySelectorAll('tr.clickable').forEach(function (tr) {
+          tr.addEventListener('click', function () { openDrill(tr.getAttribute('data-id')); });
+        });
+      }
+
+      function renderTrend(runs) {
+        var personas = {};
+        summaries.forEach(function (r) { personas[r.persona] = r.userType; });
+        var names = Object.keys(personas).sort();
+        // map runId -> persona -> row
+        var lookup = {};
+        runs.forEach(function (run) { lookup[run.runId] = {}; run.rows.forEach(function (r) { lookup[run.runId][r.persona] = r; }); });
+        var head = '<tr><th style="text-align:left">Persona</th>' + runs.map(function (run) {
+          return '<th title="' + esc(fmtTime(run.ts)) + '">' + esc(new Date(run.ts).toLocaleDateString([], { month:'short', day:'numeric' })) + '</th>';
+        }).join('') + '</tr>';
+        var body = names.map(function (name) {
+          var cells = runs.map(function (run) {
+            var r = lookup[run.runId][name];
+            var cls = !r ? 'none' : (r.status === 'error' ? 'err' : (r.passed ? 'pass' : 'fail'));
+            var tip = r ? (name + ' — ' + (r.status === 'error' ? 'error' : (r.passed ? 'pass' : 'fail'))) : 'not run';
+            return '<td>' + (r ? '<span class="cell ' + cls + '" title="' + esc(tip) + '" data-id="' + esc(r.id) + '"></span>' : '<span class="cell none"></span>') + '</td>';
+          }).join('');
+          return '<tr><td style="text-align:left" class="mono">' + esc(name) + '</td>' + cells + '</tr>';
+        }).join('');
+        document.getElementById('trend').innerHTML = '<table class="grid">' + head + body + '</table>';
+        document.querySelectorAll('#trend .cell[data-id]').forEach(function (c) {
+          c.style.cursor = 'pointer';
+          c.addEventListener('click', function () { openDrill(c.getAttribute('data-id')); });
+        });
+      }
+
+      // ── drill-down ──
+      function openDrill(id) {
+        var root = document.getElementById('modalRoot');
+        root.innerHTML = '<div class="overlay"><div class="modal"><p class="muted">Loading transcript…</p></div></div>';
+        root.querySelector('.overlay').addEventListener('click', function (e) { if (e.target.className === 'overlay') root.innerHTML = ''; });
+        fetch(api('&id=' + encodeURIComponent(id)), { cache: 'no-store' })
+          .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+          .then(function (data) { renderDrill(data.result); })
+          .catch(function (e) { root.querySelector('.modal').innerHTML = '<p style="color:var(--fail)">Failed to load: ' + esc(e.message) + '</p>'; });
+      }
+
+      function renderDrill(r) {
+        if (!r) return;
+        var req = (r.requiredReferrals || []).map(function (a) {
+          return '<div class="assert">' + (a.found ? '<span class="pill pass">found</span>' : '<span class="pill fail">missing</span>') + ' required: <span class="mono">' + esc(a.key) + '</span></div>';
+        }).join('');
+        var forb = (r.forbiddenReferrals || []).map(function (a) {
+          return '<div class="assert">' + (a.found ? '<span class="pill fail">MENTIONED</span>' : '<span class="pill pass">absent</span>') + ' forbidden: <span class="mono">' + esc(a.key) + '</span></div>';
+        }).join('');
+        var wb = r.wellbeingCheckReached == null ? '' :
+          '<div class="assert">' + (r.wellbeingCheckReached ? '<span class="pill pass">yes</span>' : '<span class="pill warn">no</span>') + ' wellbeing self-check reached</div>';
+        var turns = (r.transcript || []).map(function (t) {
+          var who = t.role === 'youth' ? 'Youth' : 'Carey';
+          return '<div class="bubble ' + (t.role === 'youth' ? 'youth' : 'carey') + '"><b>' + who + '</b><br>' + esc(t.text) +
+            (t.phase ? '<div class="turnmeta">' + esc(t.phase) + '</div>' : '') + '</div>';
+        }).join('');
+        var err = r.errorDetail ? '<p style="color:var(--fail)">Error: ' + esc(r.errorDetail) + '</p>' : '';
+        document.getElementById('modalRoot').querySelector('.modal').innerHTML =
+          '<button class="close" onclick="document.getElementById(\'modalRoot\').innerHTML=\'\'">✕ close</button>' +
+          '<h3 class="mono">' + esc(r.persona) + '</h3>' +
+          '<p class="muted">' + esc(r.outcomeLabel || '') + ' · final tag ' + tagPill(r.finalTag) + ' · phase ' + esc(r.finalPhase || '—') + '</p>' +
+          err + req + forb + wb +
+          '<h2 style="margin-top:18px">Transcript</h2>' + (turns || '<p class="muted">No transcript.</p>');
+      }
+
+      // ── load ──
+      function load() {
+        statusEl.textContent = 'loading…';
+        fetch(api(), { cache: 'no-store' })
+          .then(function (r) { if (r.status === 401) throw new Error('unauthorized'); if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+          .then(function (data) {
+            summaries = data.results || [];
+            var runs = groupRuns(summaries);
+            renderKpis(runs); renderScorecard(runs); renderTrend(runs);
+            statusEl.textContent = summaries.length + ' results · ' + runs.length + ' runs';
+          })
+          .catch(function (e) {
+            if (e.message === 'unauthorized') { showGate('Invalid or expired token.'); return; }
+            statusEl.textContent = 'error: ' + e.message;
+          });
+      }
+
+      function start() {
+        app.classList.remove('hidden'); gate.classList.add('hidden');
+        document.getElementById('navLog').href = 'uat-logs.html?token=' + encodeURIComponent(token);
+        document.getElementById('refreshBtn').addEventListener('click', load);
+        load();
+      }
+
+      function showGate(msg) {
+        gate.classList.remove('hidden'); app.classList.add('hidden');
+        document.getElementById('gateErr').textContent = msg || '';
+        document.getElementById('tokenBtn').onclick = function () {
+          token = document.getElementById('tokenInput').value.trim();
+          if (token) { history.replaceState(null, '', '?token=' + encodeURIComponent(token)); start(); }
+        };
+        document.getElementById('tokenInput').addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter') document.getElementById('tokenBtn').click();
+        });
+      }
+
+      if (token) start(); else showGate('');
+    })();
+  </script>
+</body>
+</html>

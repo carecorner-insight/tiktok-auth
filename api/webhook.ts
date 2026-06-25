@@ -135,6 +135,18 @@ async function handleMessage(
           process.env.DIFY_API_KEY ?? '',
         ),
       ),
+      // Menu option 5 — separate AIBots/Directus bot (its own seeded prompt),
+      // with its own Dify social-coach fallback. Shares the send URL (chat_id).
+      socialCoach: new FallbackAIClient(
+        new AIBotsClient(
+          process.env.DIRECTUS_SOCIALCOACH_CREATE_CHAT_URL ?? '',
+          process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
+        ),
+        new DifyClient(
+          process.env.DIFY_API_URL ?? '',
+          process.env.DIFY_SOCIALCOACH_API_KEY ?? '',
+        ),
+      ),
       typing: adapter,
     };
 
