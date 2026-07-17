@@ -168,6 +168,7 @@ export function buildGraph(services: GraphServices) {
       wellbeingCheckNode:   'wellbeingCheckNode',
       stressManagementNode: 'stressManagementNode',
       resourceRedirectNode: 'resourceRedirectNode',
+      socialCoachNode:      'socialCoachNode',
       sessionPersister:     'sessionPersister',
       [END]: END,
     })
