@@ -58,6 +58,7 @@ const GraphAnnotation = Annotation.Root({
   userId:             Annotation<string>,
   conversationId:     Annotation<string>,
   isAuthorized:       Annotation<boolean>,
+  age:                Annotation<number | null>,
   questionIndex:      Annotation<number>,
   answers:            Annotation<string[]>({ reducer: (_, next) => next, default: () => [] }),
   tag:                Annotation<tag | null>,

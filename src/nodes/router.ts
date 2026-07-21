@@ -20,7 +20,8 @@ export function router(state: CareyBotState): string {
 
   if (conversationPhase === 'ageCheck') {
     const lastAssistant = [...state.messages].reverse().find(m => m.role === 'assistant');
-    const awaitingAnswer = lastAssistant?.content.includes('Yes / No') ?? false;
+    // The age prompt (and its re-prompt) both contain "how old are you".
+    const awaitingAnswer = lastAssistant?.content.toLowerCase().includes('how old are you') ?? false;
     return awaitingAnswer ? 'ageGateNode' : 'ageCheckNode';
   }
 

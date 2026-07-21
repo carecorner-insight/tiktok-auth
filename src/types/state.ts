@@ -28,6 +28,9 @@ export interface CareyBotState {
   // RBAC
   isAuthorized: boolean;
 
+  // Demographics — actual age collected at the age gate (null until answered)
+  age: number | null;
+
   // Questionnaire — C-SSRS informed 4-question screener
   questionIndex: number;       // 0–3; 4 = all answered
   answers: string[];           // 'yes' | 'no' per question
@@ -59,6 +62,7 @@ export const initialState = (
   userId,
   conversationId,
   isAuthorized: false,
+  age: null,
   questionIndex: 0,
   answers: [],
   tag: null,

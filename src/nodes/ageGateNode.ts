@@ -15,24 +15,33 @@ const QUESTIONNAIRE_PREAMBLE =
 
 export function ageGateNode(state: CareyBotState): NodeResult {
   const input = getLastUserInput(state);
+  const match = input.match(/\d{1,3}/);
+  const age = match ? parseInt(match[0], 10) : null;
 
-  if (input !== 'yes' && input !== 'no') {
+  // Couldn't read a plausible age → re-prompt. Keep the "how old are you"
+  // marker so the router keeps routing back here.
+  if (age === null || age < 5 || age > 120) {
     return {
-      pendingResponse: `Please reply with Yes or No.\n\nAre you between 13 and 25 years old?\n\nYes / No`,
+      pendingResponse:
+        "Sorry, I didn't quite catch that — how old are you? " +
+        "Please reply with just a number (for example, 15).",
     };
   }
 
-  if (input === 'no') {
+  // In scope (13–25) → record age and move to the screener.
+  if (age >= 13 && age <= 25) {
     return {
-      conversationPhase: 'option',
-      selectedOption: 1,
-      pendingResponse: OUT_OF_SCOPE_MESSAGE,
+      age,
+      conversationPhase: 'questionnaire',
+      pendingResponse: `${QUESTIONNAIRE_PREAMBLE}\n\n${CSSRS_QUESTIONS[0].text}\n\nYes / No`,
     };
   }
 
-  // Yes — move directly to Q1
+  // Out of scope (too young / too old) → still record age, route to support.
   return {
-    conversationPhase: 'questionnaire',
-    pendingResponse: `${QUESTIONNAIRE_PREAMBLE}\n\n${CSSRS_QUESTIONS[0].text}\n\nYes / No`,
+    age,
+    conversationPhase: 'option',
+    selectedOption: 1,
+    pendingResponse: OUT_OF_SCOPE_MESSAGE,
   };
 }

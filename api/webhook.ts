@@ -9,6 +9,7 @@ import { TelegramAdapter } from '../src/adapters/telegram';
 import { WhitelistService } from '../src/services/whitelistService';
 import { SessionManager } from '../src/services/sessionManager';
 import { SharePointLogger } from '../src/services/sharePointLogger';
+import { DemographicsLogger } from '../src/services/demographicsLogger';
 import { AIBotsClient } from '../src/services/aiBotsClient';
 import { DifyClient } from '../src/services/difyClient';
 import { FallbackAIClient } from '../src/services/fallbackAIClient';
@@ -223,6 +224,21 @@ async function handleMessage(
         });
       } catch (e) {
         console.error('[uat] log push failed:', e);
+      }
+    }
+
+    // Demographic capture — log the user's actual age once, deduped in Redis.
+    // The NX key persists ~1 year so a returning user isn't re-logged.
+    const demoUrl = process.env.DEMOGRAPHICS_WEBHOOK_URL;
+    if (demoUrl && result.state.age != null) {
+      try {
+        const demoKey = `demographic:${msg.platform}:${msg.userId}`;
+        const firstTime = await redis.set(demoKey, '1', { ex: 365 * 24 * 3600, nx: true });
+        if (firstTime !== null) {
+          await new DemographicsLogger(demoUrl).log(msg.platform, msg.userId, result.state.age);
+        }
+      } catch (e) {
+        console.error('[demographics] dedup/log error:', e);
       }
     }
 
