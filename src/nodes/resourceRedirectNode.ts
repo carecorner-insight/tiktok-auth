@@ -15,7 +15,7 @@ interface ITypingIndicator {
 export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
   return async function resourceRedirectNode(state: CareyBotState): Promise<NodeResult> {
     const userText = getLastUserInput(state);
-    const isInitialSelection = /^[.\s]*[4][.\s]*$/.test(userText);
+    const isInitialSelection = /^[.\s]*[3][.\s]*$/.test(userText);
 
     if (isInitialSelection) {
       return {
@@ -25,7 +25,7 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: IT
           `You can also reach out to someone you trust, or contact a crisis line if you need immediate support.\n\n` +
           `Feel free to keep chatting, or type *menu* to see other support options.`,
         conversationPhase: 'option',
-        selectedOption: 4,
+        selectedOption: 3,
       };
     }
 
@@ -51,7 +51,7 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: IT
         aiBotChatId: result.chatId,
         pendingResponse: reply,
         conversationPhase: isCrisis ? 'crisis' : 'option',
-        selectedOption: 4,
+        selectedOption: 3,
         ...(isCrisis && { crisisDetected: true }),
       };
     } finally {

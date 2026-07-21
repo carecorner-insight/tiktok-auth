@@ -22,7 +22,9 @@ export function makeFreeTextNode(aiBotsClient: IAIBotsClient, typing: ITypingInd
         `and is now opening a fresh chat to talk about something on their mind. ` +
         `You are entering State 2B (Post-Screener Engagement) for the first time. ` +
         `Do not reference any previous sessions. Do not run triage or screener. ` +
-        `Begin with a warm, brief invitation to share.`
+        `Begin with a warm, brief invitation to share. As the conversation develops, ` +
+        `follow the emotion ladder — if the user is distressed, you may offer ONE brief ` +
+        `coping or regulation skill (State 4) when it fits.`
       : undefined;
 
     await typing.sendTypingIndicator(state.userId);

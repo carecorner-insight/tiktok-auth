@@ -40,10 +40,8 @@ export const MENU_TEXT =
   `Thanks for answering that.\n\n` +
   `What would feel most helpful right now?\n\n` +
   `1. Talk about something that's been bothering me\n` +
-  `2. Do a quick wellbeing self-check\n` +
-  `3. Learn ways to manage stress\n` +
-  `4. Find support / resources\n` +
-  `5. Practise a social situation (social coach)`;
+  `2. Practise a social situation (social coach)\n` +
+  `3. Find support / resources`;
 
 export const EMERGENCY_MESSAGE =
   "I'm really concerned about your safety right now.\n\n" +

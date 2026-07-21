@@ -47,7 +47,7 @@ export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITyping
       return {
         aiBotChatId: result.chatId,
         pendingResponse: reply,
-        selectedOption: 5,
+        selectedOption: 2,
         conversationPhase: isCrisis ? 'crisis' : 'option',
         ...(isCrisis && { crisisDetected: true }),
       };

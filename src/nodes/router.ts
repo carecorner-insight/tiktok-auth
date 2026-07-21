@@ -4,10 +4,8 @@ import { TOTAL_QUESTIONS } from '../config/questionnaire';
 
 const OPTION_NODE: Record<number, string> = {
   1: 'freeTextNode',
-  2: 'wellbeingCheckNode',
-  3: 'stressManagementNode',
-  4: 'resourceRedirectNode',
-  5: 'socialCoachNode',
+  2: 'socialCoachNode',
+  3: 'resourceRedirectNode',
 };
 
 const MENU_KEYWORDS = new Set(['menu', 'back', 'back to menu', 'change', 'options']);
