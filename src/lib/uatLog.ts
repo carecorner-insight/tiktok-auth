@@ -1,4 +1,5 @@
 import type { RedisClient } from './redis';
+import { redactPII } from './pii';
 
 // Ephemeral ring buffer of recent conversation turns, for the UAT live-log page.
 // Capture is gated on UAT_LOG_TOKEN being set (see webhook.ts), so nothing is
@@ -39,6 +40,9 @@ export async function pushUatLog(
   const ts = entry.ts ?? Date.now();
   const full: UatLogEntry = {
     ...entry,
+    // Redact structured PII from free-text fields before storing.
+    userMessage: redactPII(entry.userMessage),
+    botReply: redactPII(entry.botReply),
     ts,
     id: `${ts}-${Math.random().toString(36).slice(2, 8)}`,
   };

@@ -14,22 +14,22 @@ export interface Question {
 export const CSSRS_QUESTIONS: Question[] = [
   {
     id: 1,
-    text: 'Have you wished you could go to sleep and not wake up?',
+    text: 'Have things felt so heavy or exhausting lately that you’ve wished you could just go to sleep and not wake up?',
     isHighRiskTrigger: false,
   },
   {
     id: 2,
-    text: 'Have you had thoughts about killing yourself?',
+    text: 'Sometimes when the pain feels like too much, people think about ending their lives. Have you found yourself having thoughts about killing yourself?',
     isHighRiskTrigger: false,
   },
   {
     id: 3,
-    text: 'Have you thought about how you might do it or made a plan?',
+    text: 'If you have been having these thoughts, have you found yourself thinking about how you might do it, or starting to make a plan?',
     isHighRiskTrigger: true,
   },
   {
     id: 4,
-    text: 'Have you ever tried to hurt yourself or prepared to?',
+    text: 'In your most difficult moments, have you ever tried to end your life, or taken any steps to prepare for it?',
     isHighRiskTrigger: true,
   },
 ];
@@ -41,12 +41,13 @@ export const MENU_TEXT =
   `What would feel most helpful right now?\n\n` +
   `1. Talk about something that's been bothering me\n` +
   `2. Practise a social situation (social coach)\n` +
-  `3. Connect with someone from our team today`;
+  `3. Connect with someone from our team today\n\n` +
+  `Please reply with the number of your choice. If you want to go back to the menu at any time, just type "menu"!`;
 
 export const EMERGENCY_MESSAGE =
   "I'm really concerned about your safety right now.\n\n" +
-  "Please call 1771 (National Mindline) now.\n\n" +
-  "If possible, stay near someone you trust or let someone nearby know you need support.";
+  "Please text or call 1771 (National Mindline) now.\n\n" +
+  "If possible, stay near someone you trust or let someone nearby know you need support. If that feels too heavy right now, feel free to chat with me.";
 
 // Shown after MODERATE scoring — evaluates whether the user is currently safe.
 // "Yes" proceeds to the menu; "No" or anything else escalates to HIGH risk.

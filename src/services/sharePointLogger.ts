@@ -1,4 +1,5 @@
 import type { CareyBotState } from '../types/state';
+import { redactPII } from '../lib/pii';
 
 type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean }>;
 
@@ -31,8 +32,8 @@ export class SharePointLogger {
       questionIndex: state.questionIndex,
       answers: state.answers,
       aiProvider: providerFromChatId(state.aiBotChatId),
-      userMessage,
-      aiResponse,
+      userMessage: redactPII(userMessage),
+      aiResponse: redactPII(aiResponse),
       timestamp: new Date().toISOString(),
     };
 
