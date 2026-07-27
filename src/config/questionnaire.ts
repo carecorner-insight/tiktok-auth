@@ -41,7 +41,7 @@ export const MENU_TEXT =
   `What would feel most helpful right now?\n\n` +
   `1. Talk about something that's been bothering me\n` +
   `2. Practise a social situation (social coach)\n` +
-  `3. Find support / resources`;
+  `3. Connect with someone from our team today`;
 
 export const EMERGENCY_MESSAGE =
   "I'm really concerned about your safety right now.\n\n" +
