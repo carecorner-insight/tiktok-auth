@@ -7,6 +7,7 @@ import { SessionManager } from '../src/services/sessionManager';
 import { AIBotsClient } from '../src/services/aiBotsClient';
 import { DifyClient } from '../src/services/difyClient';
 import { FallbackAIClient } from '../src/services/fallbackAIClient';
+import { makeCareyAIClient } from '../src/services/makeCareyAIClient';
 import type { NormalizedMessage } from '../src/types/platform';
 import type { Platform } from '../src/types/state';
 
@@ -72,16 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // SharePoint whitelist. This exercises the conversation flow, not RBAC.
     whitelist: { isAuthorized: async () => true },
     session,
-    aiBots: new FallbackAIClient(
-      new AIBotsClient(
-        process.env.DIRECTUS_CREATE_CHAT_URL ?? '',
-        process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
-      ),
-      new DifyClient(
-        process.env.DIFY_API_URL ?? '',
-        process.env.DIFY_API_KEY ?? '',
-      ),
-    ),
+    aiBots: makeCareyAIClient(),
     socialCoach: new FallbackAIClient(
       new AIBotsClient(
         process.env.DIRECTUS_SOCIALCOACH_CREATE_CHAT_URL ?? '',

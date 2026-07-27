@@ -13,6 +13,7 @@ import { DemographicsLogger } from '../src/services/demographicsLogger';
 import { AIBotsClient } from '../src/services/aiBotsClient';
 import { DifyClient } from '../src/services/difyClient';
 import { FallbackAIClient } from '../src/services/fallbackAIClient';
+import { makeCareyAIClient } from '../src/services/makeCareyAIClient';
 import type { IPlatformAdapter } from '../src/types/platform';
 import type { Platform } from '../src/types/state';
 import { pushUatLog, providerFromChatId } from '../src/lib/uatLog';
@@ -126,16 +127,9 @@ async function handleMessage(
     const services = {
       whitelist: new WhitelistService(redis, fetchWhitelistStatus),
       session: new SessionManager(redis),
-      aiBots: new FallbackAIClient(
-        new AIBotsClient(
-          process.env.DIRECTUS_CREATE_CHAT_URL ?? '',
-          process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
-        ),
-        new DifyClient(
-          process.env.DIFY_API_URL ?? '',
-          process.env.DIFY_API_KEY ?? '',
-        ),
-      ),
+      // Carey's client — AIBots+Dify by default, or direct Qwen when
+      // USE_DIRECT_LLM=true (efficacy experiment; off by default).
+      aiBots: makeCareyAIClient(),
       // Menu option 5 — separate AIBots/Directus bot (its own seeded prompt),
       // with its own Dify social-coach fallback. Shares the send URL (chat_id).
       socialCoach: new FallbackAIClient(

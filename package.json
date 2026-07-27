@@ -5,6 +5,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "simulate": "ts-node -r dotenv/config src/scripts/simulate-conversation.ts",
+    "gen:prompt": "node scripts/gen-carey-prompt.js",
     "promptfoo": "promptfoo eval --config src/config/promptfooconfig.yaml"
   },
   "dependencies": {

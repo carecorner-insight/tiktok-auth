@@ -8,6 +8,7 @@ const AGE_CHECK_MESSAGE =
 
 export function restartNode(_state: CareyBotState): NodeResult {
   return {
+    age: null,
     questionIndex: 0,
     answers: [],
     tag: null,
