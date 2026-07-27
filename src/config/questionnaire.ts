@@ -42,12 +42,14 @@ export const MENU_TEXT =
   `1. Talk about something that's been bothering me\n` +
   `2. Practise a social situation (social coach)\n` +
   `3. Connect with someone from our team today\n\n` +
-  `Please reply with the number of your choice. If you want to go back to the menu at any time, just type "menu"!`;
+  `Please reply with the number of your choice. If you want to go back to the menu at any time, just type "menu"!\n\n` + 
+  `Alternatively, if you want to restart the conversation entirely, type "/restart".`;
 
 export const EMERGENCY_MESSAGE =
   "I'm really concerned about your safety right now.\n\n" +
   "Please text or call 1771 (National Mindline) now.\n\n" +
-  "If possible, stay near someone you trust or let someone nearby know you need support. If that feels too heavy right now, feel free to chat with me.";
+  "If possible, stay near someone you trust or let someone nearby know you need support. If that feels too heavy right now, feel free to chat with me. \n\n" +
+  `Alternatively, if you wish to restart the conversation, type "/restart".`;
 
 // Shown after MODERATE scoring — evaluates whether the user is currently safe.
 // "Yes" proceeds to the menu; "No" or anything else escalates to HIGH risk.
