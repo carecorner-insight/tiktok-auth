@@ -14,9 +14,12 @@ import { AIBotsClient } from '../src/services/aiBotsClient';
 import { DifyClient } from '../src/services/difyClient';
 import { FallbackAIClient } from '../src/services/fallbackAIClient';
 import { makeCareyAIClient } from '../src/services/makeCareyAIClient';
+import { DirectLLMClient } from '../src/services/directLLMClient';
+import { INTENT_CLASSIFIER_PROMPT } from '../src/nodes/intentClassifierNode';
 import type { IPlatformAdapter } from '../src/types/platform';
 import type { Platform } from '../src/types/state';
 import { pushUatLog, providerFromChatId } from '../src/lib/uatLog';
+import { getMenuMode } from '../src/lib/menuMode';
 
 export const config = { runtime: 'nodejs', maxDuration: 60 };
 
@@ -124,9 +127,11 @@ async function handleMessage(
   const tLock = Date.now();
   await withUserLock(redis, msg.platform, msg.userId, async () => {
     console.log(`[perf] lock acquire: ${Date.now() - tLock}ms`);
+    const menuMode = await getMenuMode(redis);
     const services = {
       whitelist: new WhitelistService(redis, fetchWhitelistStatus),
       session: new SessionManager(redis),
+      menuMode,
       // Carey's client — AIBots+Dify by default, or direct Qwen when
       // USE_DIRECT_LLM=true (efficacy experiment; off by default).
       aiBots: makeCareyAIClient(),
@@ -142,6 +147,14 @@ async function handleMessage(
           process.env.DIFY_SOCIALCOACH_API_KEY ?? '',
         ),
       ),
+      // Intent classification for the open-ended post-screener entry — a
+      // direct OpenAI-compatible call (single-token output, no AIBots session).
+      intentLLM: new DirectLLMClient({
+        apiKey: process.env.QWEN_API_KEY ?? '',
+        baseURL: process.env.QWEN_BASE_URL ?? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+        model: process.env.INTENT_LLM_MODEL ?? 'qwen-turbo',
+        systemPrompt: INTENT_CLASSIFIER_PROMPT,
+      }),
       typing: adapter,
     };
 

@@ -13,25 +13,19 @@ interface ITypingIndicator {
 
 export function makeEmergencyHandler(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
   return async function emergencyHandler(state: CareyBotState): Promise<NodeResult> {
-    // First crisis turn: send the static hotline message immediately, no AI call.
-    // Subsequent turns (phase already 'crisis'): hand off to AIBots for ongoing support.
-    if (state.conversationPhase !== 'crisis') {
-      return {
-        pendingResponse: EMERGENCY_MESSAGE,
-        conversationPhase: 'crisis',
-        crisisDetected: true,
-      };
-    }
+    // AI-generated crisis response with a GUARANTEED static-hotline fallback, so
+    // 1771 is never lost — regardless of which phase routed us here (screener,
+    // safety gate, intent label, the router's crisis backstop, or an ongoing
+    // crisis) or whether AIBots is reachable. A fresh crisis session (no AI chat
+    // yet) gets a first-contact prime that surfaces the hotlines explicitly.
+    const isFreshCrisisSession = !state.aiBotChatId;
 
-    const primeMessage = !state.aiBotChatId
-      ? `[SYSTEM CONTEXT] This is a crisis support conversation. ` +
-        `The user has been identified as high risk and has already received emergency hotline information. ` +
-        `You are in State 8 (Crisis Routing). ` +
-        `Do not run triage or screener. Do not reference previous sessions. ` +
-        `Your role is to keep the user engaged, validate their feelings, and gently reinforce ` +
-        `that they should reach out to 1771 (National Mindline) or 995 for immediate danger` +
-        `Do not remind too incessantly about the hotlines, but do look for cues that they may be in crisis and gently nudge them to use those resources if they haven't already. ` +
-        `Stay calm, warm, and present. Do not end the conversation.`
+    const primeMessage = isFreshCrisisSession
+      ? `[SYSTEM CONTEXT] This is the start of a crisis support conversation (State 8, Crisis Routing). ` +
+        `The user has just been identified as high risk. Do not run triage or a screener, and do not ` +
+        `reference previous sessions. Clearly and calmly surface the crisis resources — National Mindline ` +
+        `1771, and 995 for immediate danger — validate their feelings, and keep them gently engaged. ` +
+        `Do not remind too incessantly about the hotlines once given. Stay warm and present; do not end the conversation.`
       : undefined;
 
     await typing.sendTypingIndicator(state.userId);
@@ -39,16 +33,24 @@ export function makeEmergencyHandler(aiBotsClient: IAIBotsClient, typing: ITypin
       typing.sendTypingIndicator(state.userId).catch(() => {});
     }, 4000);
 
-    const textForAI = !state.aiBotChatId ? 'Hi' : state.messages[state.messages.length - 1]?.content ?? 'Hi';
-    // history = all messages except the current user message (last entry)
+    const textForAI = isFreshCrisisSession
+      ? 'Hi'
+      : state.messages[state.messages.length - 1]?.content ?? 'Hi';
     const history = state.messages.slice(0, -1);
     try {
       const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage, history);
-      // Already in crisis — we only strip the tag, the isCrisis flag is moot here.
       const { reply } = parseCrisisReply(result.reply);
       return {
         aiBotChatId: result.chatId,
         pendingResponse: reply,
+        conversationPhase: 'crisis',
+        crisisDetected: true,
+      };
+    } catch (err) {
+      // AIBots unavailable / rate-limited — GUARANTEE the hotline reaches the user.
+      console.error('[emergencyHandler] AIBots failed, using static crisis fallback:', err);
+      return {
+        pendingResponse: EMERGENCY_MESSAGE,
         conversationPhase: 'crisis',
         crisisDetected: true,
       };

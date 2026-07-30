@@ -49,6 +49,13 @@ export interface CareyBotState {
   // Set true when crisis detected mid free-text (Option 1)
   crisisDetected: boolean;
 
+  // Social-coach handoff (set when Carey's reply carries a [SOCIAL] tag and we
+  // offer the coach; the router treats the next "yes" as a switch to option 2)
+  pendingHandoff: 'socialCoach' | null;
+
+  // True once the coach has been offered this session — prevents repeat nagging
+  socialCoachOffered: boolean;
+
   // AIBots server-side chat session ID (created on first AI call, persisted across turns)
   aiBotChatId: string | null;
 }
@@ -71,5 +78,7 @@ export const initialState = (
   messages: [],
   pendingResponse: null,
   crisisDetected: false,
+  pendingHandoff: null,
+  socialCoachOffered: false,
   aiBotChatId: null,
 });

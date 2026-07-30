@@ -17,6 +17,8 @@ export function restartNode(_state: CareyBotState): NodeResult {
     messages: [],
     pendingResponse: AGE_CHECK_MESSAGE,
     crisisDetected: false,
+    pendingHandoff: null,
+    socialCoachOffered: false,
     aiBotChatId: null,
   };
 }

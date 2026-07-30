@@ -40,6 +40,35 @@ describe('router — /restart command', () => {
   });
 });
 
+// ── universal crisis backstop (checked before phase routing) ──────────────────
+
+describe('router — universal crisis backstop', () => {
+  it('routes to emergencyHandler on a crisis phrase from the menu phase', () => {
+    const state = withUserMsg('honestly I just want to die', { conversationPhase: 'menu' });
+    expect(router(state)).toBe('emergencyHandler');
+  });
+
+  it('routes to emergencyHandler on a crisis phrase mid-questionnaire', () => {
+    const state = withUserMsg('I keep thinking about ending my life', {
+      conversationPhase: 'questionnaire',
+    });
+    expect(router(state)).toBe('emergencyHandler');
+  });
+
+  it('routes to emergencyHandler on a crisis phrase from an active option', () => {
+    const state = withUserMsg('I want to kill myself', {
+      conversationPhase: 'option',
+      selectedOption: 1,
+    });
+    expect(router(state)).toBe('emergencyHandler');
+  });
+
+  it('does not trigger on screener Yes/No answers or menu digits', () => {
+    expect(router(withUserMsg('no', { conversationPhase: 'menu' }))).not.toBe('emergencyHandler');
+    expect(router(withUserMsg('1', { conversationPhase: 'menu' }))).not.toBe('emergencyHandler');
+  });
+});
+
 // ── ageCheck phase ────────────────────────────────────────────────────────────
 
 describe('router — ageCheck phase', () => {
@@ -48,12 +77,12 @@ describe('router — ageCheck phase', () => {
     expect(router(state)).toBe('ageCheckNode');
   });
 
-  it('routes to ageGateNode when last assistant message contains "Yes / No"', () => {
+  it('routes to ageGateNode when last assistant message asked "how old are you"', () => {
     const state = makeState({
       conversationPhase: 'ageCheck',
       messages: [
-        { role: 'assistant', content: 'Are you between 13 and 25 years old?\n\nYes / No', timestamp: 0 },
-        { role: 'user', content: 'yes', timestamp: 1 },
+        { role: 'assistant', content: 'Before we start — how old are you?', timestamp: 0 },
+        { role: 'user', content: '15', timestamp: 1 },
       ],
     });
     expect(router(state)).toBe('ageGateNode');
@@ -103,8 +132,8 @@ describe('router — questionnaire phase', () => {
 // ── menu phase ────────────────────────────────────────────────────────────────
 
 describe('router — menu phase', () => {
-  it('routes to optionRouter', () => {
-    expect(router(makeState({ conversationPhase: 'menu' }))).toBe('optionRouter');
+  it('routes to intentClassifierNode', () => {
+    expect(router(makeState({ conversationPhase: 'menu' }))).toBe('intentClassifierNode');
   });
 });
 
@@ -115,16 +144,12 @@ describe('router — option phase', () => {
     expect(router(makeState({ conversationPhase: 'option', selectedOption: 1 }))).toBe('freeTextNode');
   });
 
-  it('routes to wellbeingCheckNode for option 2', () => {
-    expect(router(makeState({ conversationPhase: 'option', selectedOption: 2 }))).toBe('wellbeingCheckNode');
+  it('routes to socialCoachNode for option 2', () => {
+    expect(router(makeState({ conversationPhase: 'option', selectedOption: 2 }))).toBe('socialCoachNode');
   });
 
-  it('routes to stressManagementNode for option 3', () => {
-    expect(router(makeState({ conversationPhase: 'option', selectedOption: 3 }))).toBe('stressManagementNode');
-  });
-
-  it('routes to resourceRedirectNode for option 4', () => {
-    expect(router(makeState({ conversationPhase: 'option', selectedOption: 4 }))).toBe('resourceRedirectNode');
+  it('routes to resourceRedirectNode for option 3', () => {
+    expect(router(makeState({ conversationPhase: 'option', selectedOption: 3 }))).toBe('resourceRedirectNode');
   });
 
   it('routes to menuPresenter when user types "menu"', () => {

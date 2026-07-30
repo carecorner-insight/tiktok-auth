@@ -8,6 +8,9 @@ import { AIBotsClient } from '../src/services/aiBotsClient';
 import { DifyClient } from '../src/services/difyClient';
 import { FallbackAIClient } from '../src/services/fallbackAIClient';
 import { makeCareyAIClient } from '../src/services/makeCareyAIClient';
+import { DirectLLMClient } from '../src/services/directLLMClient';
+import { INTENT_CLASSIFIER_PROMPT } from '../src/nodes/intentClassifierNode';
+import { getMenuMode } from '../src/lib/menuMode';
 import type { NormalizedMessage } from '../src/types/platform';
 import type { Platform } from '../src/types/state';
 
@@ -62,6 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const redis = getRedis();
   const session = new SessionManager(redis);
+  const menuMode = await getMenuMode(redis);
 
   // Start a fresh conversation when requested (e.g. turn 0 of a run).
   if (body.reset) {
@@ -84,6 +88,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         process.env.DIFY_SOCIALCOACH_API_KEY ?? '',
       ),
     ),
+    intentLLM: new DirectLLMClient({
+      apiKey: process.env.QWEN_API_KEY ?? '',
+      baseURL: process.env.QWEN_BASE_URL ?? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+      model: process.env.INTENT_LLM_MODEL ?? 'qwen-turbo',
+      systemPrompt: INTENT_CLASSIFIER_PROMPT,
+    }),
+    menuMode,
     typing: { sendTypingIndicator: async () => {} },
   };
 

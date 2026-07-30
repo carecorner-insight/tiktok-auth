@@ -36,6 +36,16 @@ export const CSSRS_QUESTIONS: Question[] = [
 
 export const TOTAL_QUESTIONS = CSSRS_QUESTIONS.length; // 4
 
+// Open-ended post-screener entry (change #1). MENU_TEXT is retained as the
+// fallback shown when intent classification returns UNCLEAR or the LLM fails,
+// and for the re-engagement nudge, which presents numbered options.
+export const OPENING_TEXT =
+  `Thanks for answering that.\n\n` +
+  `What brings you here today? You can share whatever's on your mind — ` +
+  `or if you'd rather, just say you'd like to practise a social situation ` +
+  `or speak with someone from our team.\n\n` +
+  `(Type "menu" anytime to see options, or "/restart" to start over.)`;
+
 export const MENU_TEXT =
   `Thanks for answering that.\n\n` +
   `What would feel most helpful right now?\n\n` +

@@ -87,6 +87,7 @@
         <button id="pauseBtn">Pause</button>
         <button id="clearBtn">Clear view</button>
         <button id="captureBtn">Capture: …</button>
+        <button id="menuModeBtn" title="Post-screener entry: open-ended intent classifier vs numbered menu">Menu: …</button>
       </div>
     </header>
     <div id="feed"><div class="empty">Waiting for activity…</div></div>
@@ -191,6 +192,27 @@
         });
       }
 
+      function renderMenuMode(mode) {
+        var btn = document.getElementById('menuModeBtn');
+        btn.dataset.mode = mode;
+        btn.textContent = 'Menu: ' + (mode === 'numbered' ? 'NUMBERED' : 'INTENT');
+      }
+
+      function setMenuMode(mode) {
+        fetch('/api/uat-logs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-uat-token': token },
+          body: JSON.stringify({ menuMode: mode })
+        }).then(function (r) {
+          if (!r.ok) throw new Error('http ' + r.status);
+          return r.json();
+        }).then(function (data) {
+          renderMenuMode(data.menuMode || mode);
+        }).catch(function (err) {
+          console.error('Failed to set menu mode:', err);
+        });
+      }
+
       function poll() {
         if (paused) return;
         var url = '/api/uat-logs?token=' + encodeURIComponent(token) + (lastTs ? '&since=' + lastTs : '');
@@ -202,6 +224,7 @@
           })
           .then(function (data) {
             ingest(data.entries || []);
+            if (data.menuMode) renderMenuMode(data.menuMode);
             setStatus('live', 'live · ' + entries.length + ' turns');
           })
           .catch(function (err) {
@@ -237,6 +260,10 @@
           toggleUat(enabled);
           this.dataset.enabled = enabled ? 'true' : 'false';
           this.textContent = 'Capture: ' + (enabled ? 'ON' : 'OFF');
+        });
+        document.getElementById('menuModeBtn').addEventListener('click', function () {
+          var next = this.dataset.mode === 'numbered' ? 'intent' : 'numbered';
+          setMenuMode(next);
         });
       }
 

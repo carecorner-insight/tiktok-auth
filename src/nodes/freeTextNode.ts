@@ -1,7 +1,7 @@
 import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { getLastUserInput } from '../types/nodes';
-import { parseCrisisReply } from '../lib/crisisDetection';
+import { parseReplyTags } from '../lib/replyTags';
 
 interface IAIBotsClient {
   chat(chatId: string | null, text: string, primeMessage?: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<{ reply: string; chatId: string }>;
@@ -11,9 +11,16 @@ interface ITypingIndicator {
   sendTypingIndicator(userId: string): Promise<void>;
 }
 
+const SOCIAL_COACH_OFFER =
+  `\n\nBy the way — it sounds like a social situation might be part of this. ` +
+  `If you'd like, we could practise how to handle it together with the social ` +
+  `coach. Want to give that a try? (yes / no — or just keep chatting)`;
+
 export function makeFreeTextNode(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
   return async function freeTextNode(state: CareyBotState): Promise<NodeResult> {
-    const userText = getLastUserInput(state);
+    const normalized = getLastUserInput(state);
+    const rawText =
+      [...state.messages].reverse().find(m => m.role === 'user')?.content ?? normalized;
 
     // Only prime new sessions — existing sessions already have context
     const primeMessage = !state.aiBotChatId
@@ -32,14 +39,28 @@ export function makeFreeTextNode(aiBotsClient: IAIBotsClient, typing: ITypingInd
       typing.sendTypingIndicator(state.userId).catch(() => {});
     }, 4000);
 
-    const textForAI = !state.aiBotChatId ? 'Hi' : userText;
+    // New session: if the user arrived via a bare menu digit there is nothing
+    // meaningful to forward, so kick off with 'Hi'. If they arrived via the
+    // open-ended entry ("What brings you here today?") their message carries
+    // real content — forward it so Carey responds to what they actually said.
+    const isBareMenuDigit = /^[123]$/.test(normalized.replace(/[.\s]/g, ''));
+    const textForAI = !state.aiBotChatId && isBareMenuDigit ? 'Hi' : rawText;
+
     const history = state.messages.slice(0, -1);
     try {
       const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage, history);
-      const { reply, isCrisis } = parseCrisisReply(result.reply);
+      const { reply, isCrisis, suggestsSocialCoach } = parseReplyTags(result.reply);
+
+      // Offer the social coach at most once per session, never on a crisis turn.
+      const offerCoach = suggestsSocialCoach && !isCrisis && !state.socialCoachOffered;
+
       return {
         aiBotChatId: result.chatId,
-        pendingResponse: reply,
+        pendingResponse: offerCoach ? reply + SOCIAL_COACH_OFFER : reply,
+        // An unanswered offer from last turn is treated as declined once the
+        // user says anything that isn't "yes" (the router catches "yes").
+        pendingHandoff: offerCoach ? 'socialCoach' : null,
+        ...(offerCoach && { socialCoachOffered: true }),
         ...(isCrisis && { crisisDetected: true, conversationPhase: 'crisis' }),
       };
     } finally {

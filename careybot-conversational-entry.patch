@@ -1,0 +1,852 @@
+diff --git a/api/webhook.ts b/api/webhook.ts
+index 1562593..33ad437 100644
+--- a/api/webhook.ts
++++ b/api/webhook.ts
+@@ -14,6 +14,8 @@ import { AIBotsClient } from '../src/services/aiBotsClient';
+ import { DifyClient } from '../src/services/difyClient';
+ import { FallbackAIClient } from '../src/services/fallbackAIClient';
+ import { makeCareyAIClient } from '../src/services/makeCareyAIClient';
++import { DirectLLMClient } from '../src/services/directLLMClient';
++import { INTENT_CLASSIFIER_PROMPT } from '../src/nodes/intentClassifierNode';
+ import type { IPlatformAdapter } from '../src/types/platform';
+ import type { Platform } from '../src/types/state';
+ import { pushUatLog, providerFromChatId } from '../src/lib/uatLog';
+@@ -142,6 +144,14 @@ async function handleMessage(
+           process.env.DIFY_SOCIALCOACH_API_KEY ?? '',
+         ),
+       ),
++      // Intent classification for the open-ended post-screener entry — a
++      // direct OpenAI-compatible call (single-token output, no AIBots session).
++      intentLLM: new DirectLLMClient({
++        apiKey: process.env.QWEN_API_KEY ?? '',
++        baseURL: process.env.QWEN_BASE_URL ?? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
++        model: process.env.INTENT_LLM_MODEL ?? 'qwen-turbo',
++        systemPrompt: INTENT_CLASSIFIER_PROMPT,
++      }),
+       typing: adapter,
+     };
+ 
+diff --git a/src/__tests__/lib/replyTags.test.ts b/src/__tests__/lib/replyTags.test.ts
+new file mode 100644
+index 0000000..be97387
+--- /dev/null
++++ b/src/__tests__/lib/replyTags.test.ts
+@@ -0,0 +1,51 @@
++import { parseReplyTags } from '@/lib/replyTags';
++
++describe('parseReplyTags', () => {
++  it('returns the reply unchanged when no tags are present', () => {
++    const r = parseReplyTags('That sounds really tough.');
++    expect(r).toEqual({
++      reply: 'That sounds really tough.',
++      isCrisis: false,
++      suggestsSocialCoach: false,
++    });
++  });
++
++  it('detects and strips a [CRISIS] prefix', () => {
++    const r = parseReplyTags("[CRISIS] I'm really concerned about your safety.");
++    expect(r.isCrisis).toBe(true);
++    expect(r.reply).toBe("I'm really concerned about your safety.");
++  });
++
++  it('detects [CRISIS] case-insensitively, with internal spaces and markdown wrapping', () => {
++    for (const raw of ['[ Crisis ] hey', '*[crisis]* hey', '_[CRISIS]_ hey']) {
++      const r = parseReplyTags(raw);
++      expect(r.isCrisis).toBe(true);
++      expect(r.reply).toBe('hey');
++    }
++  });
++
++  it('detects a tag anywhere in the reply, not only as a prefix', () => {
++    const r = parseReplyTags('Let me pause here. [CRISIS] Please reach out now.');
++    expect(r.isCrisis).toBe(true);
++    expect(r.reply).toBe('Let me pause here. Please reach out now.');
++  });
++
++  it('detects and strips a [SOCIAL] tag', () => {
++    const r = parseReplyTags('[SOCIAL] It sounds like that talk with your friend was hard.');
++    expect(r.suggestsSocialCoach).toBe(true);
++    expect(r.isCrisis).toBe(false);
++    expect(r.reply).toBe('It sounds like that talk with your friend was hard.');
++  });
++
++  it('gives crisis precedence: both tags present → crisis only, both stripped', () => {
++    const r = parseReplyTags('[SOCIAL][CRISIS] Please stay with me here.');
++    expect(r.isCrisis).toBe(true);
++    expect(r.suggestsSocialCoach).toBe(false);
++    expect(r.reply).toBe('Please stay with me here.');
++  });
++
++  it('strips every known tag even when only one is honoured', () => {
++    const r = parseReplyTags('[social] some reply [Social]');
++    expect(r.reply).toBe('some reply');
++  });
++});
+diff --git a/src/__tests__/nodes/intentClassifierNode.test.ts b/src/__tests__/nodes/intentClassifierNode.test.ts
+new file mode 100644
+index 0000000..0a3bf07
+--- /dev/null
++++ b/src/__tests__/nodes/intentClassifierNode.test.ts
+@@ -0,0 +1,134 @@
++import {
++  makeIntentClassifierNode,
++  parseIntentReply,
++  containsCrisisPhrase,
++} from '@/nodes/intentClassifierNode';
++import { makeState } from '@/__tests__/mocks';
++import { MENU_TEXT } from '@/config/questionnaire';
++
++const stateWithInput = (text: string) =>
++  makeState({
++    conversationPhase: 'menu',
++    messages: [{ role: 'user', content: text, timestamp: Date.now() }],
++  });
++
++const makeLLMMock = (reply: string) => ({
++  chat: jest.fn().mockResolvedValue({ reply, chatId: 'intent-1' }),
++});
++
++describe('parseIntentReply', () => {
++  it('parses exact labels', () => {
++    expect(parseIntentReply('TALK')).toBe('TALK');
++    expect(parseIntentReply(' social ')).toBe('SOCIAL');
++  });
++
++  it('tolerates trailing punctuation and explanations', () => {
++    expect(parseIntentReply('CRISIS.')).toBe('CRISIS');
++    expect(parseIntentReply('HUMAN - they asked for a counsellor')).toBe('HUMAN');
++  });
++
++  it('returns null for garbage', () => {
++    expect(parseIntentReply('I think they want to chat')).toBeNull();
++    expect(parseIntentReply('')).toBeNull();
++  });
++});
++
++describe('containsCrisisPhrase', () => {
++  it('matches high-precision phrases on normalised input', () => {
++    expect(containsCrisisPhrase('i want to die')).toBe(true);
++    expect(containsCrisisPhrase('ive been thinking about self harm')).toBe(true);
++    expect(containsCrisisPhrase('i dont want to live anymore')).toBe(true);
++  });
++
++  it('does not match everyday language', () => {
++    expect(containsCrisisPhrase('my phone battery died')).toBe(false);
++    expect(containsCrisisPhrase('this homework is killing me not really')).toBe(false);
++    expect(containsCrisisPhrase('i want to talk about school')).toBe(false);
++  });
++});
++
++describe('intentClassifierNode', () => {
++  it('maps numeric replies 1/2/3 without calling the LLM', async () => {
++    const llm = makeLLMMock('TALK');
++    const node = makeIntentClassifierNode(llm);
++
++    const r1 = await node(stateWithInput('1'));
++    expect(r1).toEqual({ selectedOption: 1, conversationPhase: 'option' });
++
++    const r2 = await node(stateWithInput(' 2. '));
++    expect(r2.selectedOption).toBe(2);
++
++    const r3 = await node(stateWithInput('3'));
++    expect(r3.selectedOption).toBe(3);
++
++    expect(llm.chat).not.toHaveBeenCalled();
++  });
++
++  it('routes to crisis on a local phrase match without calling the LLM', async () => {
++    const llm = makeLLMMock('TALK');
++    const node = makeIntentClassifierNode(llm);
++    const result = await node(stateWithInput('honestly I just want to die'));
++    expect(result.crisisDetected).toBe(true);
++    expect(result.conversationPhase).toBe('crisis');
++    expect(llm.chat).not.toHaveBeenCalled();
++  });
++
++  it('classifies TALK via the LLM and selects option 1', async () => {
++    const llm = makeLLMMock('TALK');
++    const node = makeIntentClassifierNode(llm);
++    const result = await node(stateWithInput('school has been stressing me out'));
++    expect(result).toEqual({ selectedOption: 1, conversationPhase: 'option' });
++    expect(llm.chat).toHaveBeenCalledWith(null, 'school has been stressing me out');
++  });
++
++  it('classifies SOCIAL via the LLM and selects option 2', async () => {
++    const node = makeIntentClassifierNode(makeLLMMock('SOCIAL'));
++    const result = await node(stateWithInput('I need to apologise to my friend but idk how'));
++    expect(result.selectedOption).toBe(2);
++  });
++
++  it('classifies HUMAN via the LLM and selects option 3', async () => {
++    const node = makeIntentClassifierNode(makeLLMMock('HUMAN'));
++    const result = await node(stateWithInput('can I talk to a real counsellor'));
++    expect(result.selectedOption).toBe(3);
++  });
++
++  it('routes to crisis when the LLM says CRISIS even without a phrase match', async () => {
++    const node = makeIntentClassifierNode(makeLLMMock('CRISIS'));
++    const result = await node(stateWithInput('everyone would be happier without me around'));
++    expect(result.crisisDetected).toBe(true);
++    expect(result.conversationPhase).toBe('crisis');
++  });
++
++  it('falls back to the numbered menu on UNCLEAR', async () => {
++    const node = makeIntentClassifierNode(makeLLMMock('UNCLEAR'));
++    const result = await node(stateWithInput('hi'));
++    expect(result.selectedOption).toBeNull();
++    expect(result.conversationPhase).toBe('menu');
++    expect(result.pendingResponse).toContain(MENU_TEXT);
++  });
++
++  it('falls back to the numbered menu when the LLM reply is unparseable', async () => {
++    const node = makeIntentClassifierNode(makeLLMMock('sure, they probably want to chat!'));
++    const result = await node(stateWithInput('hmm'));
++    expect(result.conversationPhase).toBe('menu');
++    expect(result.pendingResponse).toContain(MENU_TEXT);
++  });
++
++  it('falls back to the numbered menu when the LLM throws (fail-safe)', async () => {
++    const llm = { chat: jest.fn().mockRejectedValue(new Error('directus down')) };
++    const node = makeIntentClassifierNode(llm);
++    const result = await node(stateWithInput('I had a fight with my mum'));
++    expect(result.conversationPhase).toBe('menu');
++    expect(result.pendingResponse).toContain(MENU_TEXT);
++  });
++
++  it('crisis phrases beat LLM availability: phrase match works while LLM is down', async () => {
++    const llm = { chat: jest.fn().mockRejectedValue(new Error('directus down')) };
++    const node = makeIntentClassifierNode(llm);
++    const result = await node(stateWithInput('I keep thinking about ending my life'));
++    expect(result.crisisDetected).toBe(true);
++    expect(result.conversationPhase).toBe('crisis');
++    expect(llm.chat).not.toHaveBeenCalled();
++  });
++});
+diff --git a/src/__tests__/nodes/menuPresenter.test.ts b/src/__tests__/nodes/menuPresenter.test.ts
+index 54f86d8..aa0d732 100644
+--- a/src/__tests__/nodes/menuPresenter.test.ts
++++ b/src/__tests__/nodes/menuPresenter.test.ts
+@@ -1,11 +1,11 @@
+ import { menuPresenter } from '@/nodes/menuPresenter';
+ import { makeState } from '@/__tests__/mocks';
+-import { MENU_TEXT } from '@/config/questionnaire';
++import { OPENING_TEXT } from '@/config/questionnaire';
+ 
+ describe('menuPresenter', () => {
+-  it('returns the menu text as pendingResponse', () => {
++  it('returns the open-ended opening question as pendingResponse', () => {
+     const result = menuPresenter(makeState());
+-    expect(result.pendingResponse).toBe(MENU_TEXT);
++    expect(result.pendingResponse).toBe(OPENING_TEXT);
+   });
+ 
+   it('sets conversationPhase to menu', () => {
+diff --git a/src/config/questionnaire.ts b/src/config/questionnaire.ts
+index cac5900..a9ffb5a 100644
+--- a/src/config/questionnaire.ts
++++ b/src/config/questionnaire.ts
+@@ -36,6 +36,16 @@ export const CSSRS_QUESTIONS: Question[] = [
+ 
+ export const TOTAL_QUESTIONS = CSSRS_QUESTIONS.length; // 4
+ 
++// Open-ended post-screener entry (change #1). MENU_TEXT is retained as the
++// fallback shown when intent classification returns UNCLEAR or the LLM fails,
++// and for the re-engagement nudge, which presents numbered options.
++export const OPENING_TEXT =
++  `Thanks for answering that.\n\n` +
++  `What brings you here today? You can share whatever's on your mind — ` +
++  `or if you'd rather, just say you'd like to practise a social situation ` +
++  `or speak with someone from our team.\n\n` +
++  `(Type "menu" anytime to see options, or "/restart" to start over.)`;
++
+ export const MENU_TEXT =
+   `Thanks for answering that.\n\n` +
+   `What would feel most helpful right now?\n\n` +
+diff --git a/src/graph/graph.ts b/src/graph/graph.ts
+index 902749b..bb4b9df 100644
+--- a/src/graph/graph.ts
++++ b/src/graph/graph.ts
+@@ -8,7 +8,7 @@ import { questionnaireNode } from '../nodes/questionnaireNode';
+ import { answerEvaluator } from '../nodes/answerEvaluator';
+ import { makeEmergencyHandler } from '../nodes/emergencyHandler';
+ import { menuPresenter } from '../nodes/menuPresenter';
+-import { optionRouter } from '../nodes/optionRouter';
++import { makeIntentClassifierNode } from '../nodes/intentClassifierNode';
+ import { makeResourceRedirectNode } from '../nodes/resourceRedirectNode';
+ import { restartNode } from '../nodes/restartNode';
+ import { ageCheckNode } from '../nodes/ageCheckNode';
+@@ -44,7 +44,8 @@ export interface GraphServices {
+   whitelist: IWhitelistService;
+   session: ISessionManager;
+   aiBots: IAIBotsClient;
+-  socialCoach: IAIBotsClient; // separate AIBots/Directus bot for menu option 5
++  socialCoach: IAIBotsClient; // separate AIBots/Directus bot for menu option 2
++  intentLLM: IAIBotsClient;   // cheap DirectLLMClient seeded with INTENT_CLASSIFIER_PROMPT
+   typing: ITypingIndicator;
+ }
+ 
+@@ -65,6 +66,8 @@ const GraphAnnotation = Annotation.Root({
+   messages:           Annotation<Message[]>({ reducer: (_, next) => next, default: () => [] }),
+   pendingResponse:    Annotation<string | null>,
+   crisisDetected:     Annotation<boolean>,
++  pendingHandoff:     Annotation<'socialCoach' | null>,
++  socialCoachOffered: Annotation<boolean>,
+   aiBotChatId:        Annotation<string | null>,
+ });
+ 
+@@ -98,9 +101,15 @@ function routeFromSafetyGate(state: typeof GraphAnnotation.State): string {
+   return next;
+ }
+ 
+-function routeFromOptionRouter(state: typeof GraphAnnotation.State): string {
++function routeFromIntentClassifier(state: typeof GraphAnnotation.State): string {
++  // Crisis (local phrase match or LLM label) → emergency response this turn.
++  if (state.crisisDetected && state.conversationPhase === 'crisis') {
++    console.log('[route] intentClassifier → emergencyHandler (crisis)');
++    return 'emergencyHandler';
++  }
+   if (!state.selectedOption) {
+-    console.log('[route] optionRouter → sessionPersister (invalid selection)');
++    // UNCLEAR / LLM failure — pendingResponse already carries the fallback menu.
++    console.log('[route] intentClassifier → sessionPersister (unclear → menu fallback)');
+     return 'sessionPersister';
+   }
+   const map: Record<number, string> = {
+@@ -109,7 +118,7 @@ function routeFromOptionRouter(state: typeof GraphAnnotation.State): string {
+     3: 'resourceRedirectNode',
+   };
+   const next = map[state.selectedOption];
+-  console.log(`[route] optionRouter → ${next} (selectedOption=${state.selectedOption})`);
++  console.log(`[route] intentClassifier → ${next} (selectedOption=${state.selectedOption})`);
+   return next;
+ }
+ 
+@@ -122,6 +131,7 @@ export function buildGraph(services: GraphServices) {
+   const socialCoach      = makeSocialCoachNode(services.socialCoach, services.typing);
+   const resourceRedirect = makeResourceRedirectNode(services.aiBots, services.typing);
+   const sessionPersist   = makeSessionPersister(services.session);
++  const intentClassifier = makeIntentClassifierNode(services.intentLLM);
+ 
+   const graph = new StateGraph(GraphAnnotation)
+ 
+@@ -136,7 +146,7 @@ export function buildGraph(services: GraphServices) {
+     .addNode('safetyGateNode',       safetyGateNode)
+     .addNode('emergencyHandler',     emergencyHandler)
+     .addNode('menuPresenter',        menuPresenter)
+-    .addNode('optionRouter',         optionRouter)
++    .addNode('intentClassifierNode', intentClassifier)
+     .addNode('freeTextNode',         freeTextNode)
+     .addNode('socialCoachNode',      socialCoach)
+     .addNode('resourceRedirectNode', resourceRedirect)
+@@ -156,7 +166,7 @@ export function buildGraph(services: GraphServices) {
+       safetyGateNode:       'safetyGateNode',
+       emergencyHandler:     'emergencyHandler',
+       menuPresenter:        'menuPresenter',
+-      optionRouter:         'optionRouter',
++      intentClassifierNode: 'intentClassifierNode',
+       freeTextNode:         'freeTextNode',
+       resourceRedirectNode: 'resourceRedirectNode',
+       socialCoachNode:      'socialCoachNode',
+@@ -178,8 +188,9 @@ export function buildGraph(services: GraphServices) {
+       menuPresenter:    'menuPresenter',
+     })
+ 
+-    // ── optionRouter → option node | re-present menu ──
+-    .addConditionalEdges('optionRouter', routeFromOptionRouter, {
++    // ── intentClassifier → crisis | option node | menu fallback ──
++    .addConditionalEdges('intentClassifierNode', routeFromIntentClassifier, {
++      emergencyHandler:     'emergencyHandler',
+       freeTextNode:         'freeTextNode',
+       resourceRedirectNode: 'resourceRedirectNode',
+       socialCoachNode:      'socialCoachNode',
+diff --git a/src/lib/crisisDetection.ts b/src/lib/crisisDetection.ts
+index a435ea1..c3864ba 100644
+--- a/src/lib/crisisDetection.ts
++++ b/src/lib/crisisDetection.ts
+@@ -1,27 +1,16 @@
++import { parseReplyTags } from './replyTags';
++
+ export interface CrisisResult {
+   reply: string;
+   isCrisis: boolean;
+ }
+ 
+-// Detects a [CRISIS] tag anywhere in the reply, case-insensitively, tolerating
+-// internal whitespace (e.g. "[ Crisis ]"). Used for the boolean check.
+-const CRISIS_DETECT = /\[\s*crisis\s*\]/i;
+-
+-// Removal pattern: same tag plus any wrapping markdown emphasis (*, _, ~, `)
+-// and trailing whitespace, matched globally so a tag anywhere is stripped.
+-const CRISIS_STRIP = /[*_~`]*\[\s*crisis\s*\][*_~`]*\s*/gi;
+-
+ /**
+- * Strips the [CRISIS] tag that the LLM emits when it enters State 8 (crisis
+- * routing). Robust to case, markdown emphasis, internal spaces, and the tag
+- * appearing anywhere in the message rather than only as a prefix.
+- *
+- * Returns the cleaned reply and whether a crisis tag was present.
++ * @deprecated Use parseReplyTags from './replyTags' — it handles [CRISIS] and
++ * [SOCIAL] in one pass. Kept as a thin delegate so existing imports and tests
++ * keep working during the migration.
+  */
+ export function parseCrisisReply(raw: string): CrisisResult {
+-  const isCrisis = CRISIS_DETECT.test(raw);
+-  if (!isCrisis) return { reply: raw, isCrisis: false };
+-
+-  const reply = raw.replace(CRISIS_STRIP, '').trim();
+-  return { reply, isCrisis: true };
++  const { reply, isCrisis } = parseReplyTags(raw);
++  return { reply, isCrisis };
+ }
+diff --git a/src/lib/replyTags.ts b/src/lib/replyTags.ts
+new file mode 100644
+index 0000000..96e7e4c
+--- /dev/null
++++ b/src/lib/replyTags.ts
+@@ -0,0 +1,59 @@
++// ── Reply tag parsing ─────────────────────────────────────────────────────────
++//
++// The LLM bots (Carey free-text bot, social coach) signal routing decisions by
++// embedding bracket tags anywhere in their reply:
++//
++//   [CRISIS]  — the user is in distress; route this turn to emergencyHandler.
++//   [SOCIAL]  — the user is describing a social-situation struggle; offer the
++//               Growing We social coach.
++//
++// This module generalises the original parseCrisisReply so new tags can be
++// added in one place. Detection is case-insensitive and tolerant of internal
++// whitespace ("[ Crisis ]") and wrapping markdown emphasis ("*[CRISIS]*").
++//
++// Precedence: CRISIS always wins. If a reply carries both tags, the social
++// coach suggestion is suppressed — never offer a coaching module in the same
++// breath as a crisis response.
++
++export interface ParsedReply {
++  /** Reply text with all known tags stripped. */
++  reply: string;
++  /** True when a [CRISIS] tag was present anywhere in the reply. */
++  isCrisis: boolean;
++  /** True when a [SOCIAL] tag was present AND no crisis tag was present. */
++  suggestsSocialCoach: boolean;
++}
++
++const KNOWN_TAGS = ['crisis', 'social'] as const;
++type KnownTag = (typeof KNOWN_TAGS)[number];
++
++// Detection: the tag anywhere, case-insensitive, internal whitespace allowed.
++const detectPattern = (tag: KnownTag): RegExp => new RegExp(`\\[\\s*${tag}\\s*\\]`, 'i');
++
++// Removal: same tag plus any wrapping markdown emphasis (*, _, ~, `) and
++// trailing whitespace, matched globally so the tag is stripped wherever it is.
++const stripPattern = (tag: KnownTag): RegExp =>
++  new RegExp(`[*_~\`]*\\[\\s*${tag}\\s*\\][*_~\`]*\\s*`, 'gi');
++
++/**
++ * Parses routing tags out of an LLM reply.
++ *
++ * All known tags are stripped from the returned text regardless of which ones
++ * are semantically honoured, so a stray tag never leaks to the user.
++ */
++export function parseReplyTags(raw: string): ParsedReply {
++  const isCrisis = detectPattern('crisis').test(raw);
++  const hasSocial = detectPattern('social').test(raw);
++
++  let reply = raw;
++  for (const tag of KNOWN_TAGS) {
++    reply = reply.replace(stripPattern(tag), '');
++  }
++
++  return {
++    reply: reply.trim(),
++    isCrisis,
++    // Crisis takes precedence — suppress the coach offer on a crisis turn.
++    suggestsSocialCoach: hasSocial && !isCrisis,
++  };
++}
+diff --git a/src/nodes/freeTextNode.ts b/src/nodes/freeTextNode.ts
+index 45da1b0..aa18a00 100644
+--- a/src/nodes/freeTextNode.ts
++++ b/src/nodes/freeTextNode.ts
+@@ -1,7 +1,7 @@
+ import type { CareyBotState } from '../types/state';
+ import type { NodeResult } from '../types/nodes';
+ import { getLastUserInput } from '../types/nodes';
+-import { parseCrisisReply } from '../lib/crisisDetection';
++import { parseReplyTags } from '../lib/replyTags';
+ 
+ interface IAIBotsClient {
+   chat(chatId: string | null, text: string, primeMessage?: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<{ reply: string; chatId: string }>;
+@@ -11,9 +11,16 @@ interface ITypingIndicator {
+   sendTypingIndicator(userId: string): Promise<void>;
+ }
+ 
++const SOCIAL_COACH_OFFER =
++  `\n\nBy the way — it sounds like a social situation might be part of this. ` +
++  `If you'd like, we could practise how to handle it together with the social ` +
++  `coach. Want to give that a try? (yes / no — or just keep chatting)`;
++
+ export function makeFreeTextNode(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
+   return async function freeTextNode(state: CareyBotState): Promise<NodeResult> {
+-    const userText = getLastUserInput(state);
++    const normalized = getLastUserInput(state);
++    const rawText =
++      [...state.messages].reverse().find(m => m.role === 'user')?.content ?? normalized;
+ 
+     // Only prime new sessions — existing sessions already have context
+     const primeMessage = !state.aiBotChatId
+@@ -32,14 +39,28 @@ export function makeFreeTextNode(aiBotsClient: IAIBotsClient, typing: ITypingInd
+       typing.sendTypingIndicator(state.userId).catch(() => {});
+     }, 4000);
+ 
+-    const textForAI = !state.aiBotChatId ? 'Hi' : userText;
++    // New session: if the user arrived via a bare menu digit there is nothing
++    // meaningful to forward, so kick off with 'Hi'. If they arrived via the
++    // open-ended entry ("What brings you here today?") their message carries
++    // real content — forward it so Carey responds to what they actually said.
++    const isBareMenuDigit = /^[123]$/.test(normalized.replace(/[.\s]/g, ''));
++    const textForAI = !state.aiBotChatId && isBareMenuDigit ? 'Hi' : rawText;
++
+     const history = state.messages.slice(0, -1);
+     try {
+       const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage, history);
+-      const { reply, isCrisis } = parseCrisisReply(result.reply);
++      const { reply, isCrisis, suggestsSocialCoach } = parseReplyTags(result.reply);
++
++      // Offer the social coach at most once per session, never on a crisis turn.
++      const offerCoach = suggestsSocialCoach && !isCrisis && !state.socialCoachOffered;
++
+       return {
+         aiBotChatId: result.chatId,
+-        pendingResponse: reply,
++        pendingResponse: offerCoach ? reply + SOCIAL_COACH_OFFER : reply,
++        // An unanswered offer from last turn is treated as declined once the
++        // user says anything that isn't "yes" (the router catches "yes").
++        pendingHandoff: offerCoach ? 'socialCoach' : null,
++        ...(offerCoach && { socialCoachOffered: true }),
+         ...(isCrisis && { crisisDetected: true, conversationPhase: 'crisis' }),
+       };
+     } finally {
+diff --git a/src/nodes/intentClassifierNode.ts b/src/nodes/intentClassifierNode.ts
+new file mode 100644
+index 0000000..40357f2
+--- /dev/null
++++ b/src/nodes/intentClassifierNode.ts
+@@ -0,0 +1,174 @@
++import type { CareyBotState, MenuOption } from '../types/state';
++import type { NodeResult } from '../types/nodes';
++import { getLastUserInput } from '../types/nodes';
++import { MENU_TEXT } from '../config/questionnaire';
++
++// ── Intent classifier — replaces the numeric-only optionRouter ───────────────
++//
++// The post-screener prompt is now open-ended ("What brings you here today?"),
++// so this node routes free text as well as the legacy 1/2/3 replies:
++//
++//   1. Numeric reply 1/2/3        → mapped directly (backward compatible; also
++//                                    used by the re-engagement nudge menu).
++//   2. Local crisis keyword check → phase 'crisis' (fail-safe: never depends
++//                                    on the LLM being reachable).
++//   3. LLM classification         → TALK | SOCIAL | HUMAN | CRISIS | UNCLEAR.
++//   4. UNCLEAR or LLM failure     → fall back to the numbered menu.
++//
++// The LLM client is any object with the shared chat() signature; in production
++// this is a DirectLLMClient constructed with INTENT_CLASSIFIER_PROMPT as its
++// system prompt (cheap, single-token output, no AIBots session needed).
++
++export const INTENT_CLASSIFIER_PROMPT =
++  `You are an intent classifier for CareyBot, a mental-health support chatbot ` +
++  `for young people aged 13-25 in Singapore. The user was just asked: ` +
++  `"What brings you here today?" and you must classify their reply.\n\n` +
++  `Labels:\n` +
++  `CRISIS - any mention of suicide, self-harm, wanting to die, disappear or not ` +
++  `wake up, feeling unsafe, or intent to hurt themselves or someone else. ` +
++  `When in doubt between CRISIS and any other label, choose CRISIS.\n` +
++  `SOCIAL - wants help with, or to practise or prepare for, a social situation: ` +
++  `conflict with friends or family, being left out, speaking up, confessing, ` +
++  `apologising, presentations, interviews, meeting new people.\n` +
++  `HUMAN - asks to speak with a real person, counsellor, therapist, or staff.\n` +
++  `TALK - wants to talk through feelings, stress, school, or anything on their ` +
++  `mind that is not primarily a social-situation rehearsal.\n` +
++  `UNCLEAR - a bare greeting, gibberish, spam, or you genuinely cannot tell.\n\n` +
++  `Reply with exactly ONE word: CRISIS, SOCIAL, HUMAN, TALK, or UNCLEAR. ` +
++  `No punctuation, no explanation.`;
++
++export type Intent = 'CRISIS' | 'SOCIAL' | 'HUMAN' | 'TALK' | 'UNCLEAR';
++
++const INTENT_TO_OPTION: Record<Exclude<Intent, 'CRISIS' | 'UNCLEAR'>, MenuOption> = {
++  TALK: 1,
++  SOCIAL: 2,
++  HUMAN: 3,
++};
++
++const VALID_OPTIONS = new Set([1, 2, 3]);
++
++// High-precision phrases only — getLastUserInput() has already lowercased and
++// stripped punctuation ("don't" arrives as "dont"). Broad single words like
++// "die" are deliberately excluded; the LLM catches phrasing this list misses.
++// This list exists so a Directus/LLM outage can never swallow a disclosure.
++const CRISIS_PHRASES = [
++  'kill myself',
++  'killing myself',
++  'kill me',
++  'suicide',
++  'suicidal',
++  'end my life',
++  'ending my life',
++  'end it all',
++  'want to die',
++  'wanna die',
++  'wish i was dead',
++  'wish i were dead',
++  'better off dead',
++  'dont want to live',
++  'do not want to live',
++  'dont want to be alive',
++  'hurt myself',
++  'hurting myself',
++  'harm myself',
++  'harming myself',
++  'self harm',
++  'selfharm',
++  'not wake up',
++  'never wake up',
++  'not safe right now',
++  'unalive',
++];
++
++export function containsCrisisPhrase(normalizedInput: string): boolean {
++  return CRISIS_PHRASES.some(p => normalizedInput.includes(p));
++}
++
++const FALLBACK_TEXT =
++  `I want to make sure I point you to the right kind of support.\n\n` + MENU_TEXT;
++
++interface IIntentLLM {
++  chat(
++    chatId: string | null,
++    text: string,
++    primeMessage?: string,
++    history?: Array<{ role: 'user' | 'assistant'; content: string }>,
++  ): Promise<{ reply: string; chatId: string }>;
++}
++
++/** Extracts the intent label from the LLM reply, tolerating minor noise. */
++export function parseIntentReply(raw: string): Intent | null {
++  const cleaned = raw.trim().toUpperCase();
++  // Exact match first, then "first word" match ("TALK." / "TALK - because...").
++  const candidates: Intent[] = ['CRISIS', 'SOCIAL', 'HUMAN', 'TALK', 'UNCLEAR'];
++  const exact = candidates.find(c => cleaned === c);
++  if (exact) return exact;
++  const firstWord = cleaned.replace(/[^A-Z\s]/g, ' ').trim().split(/\s+/)[0];
++  return candidates.find(c => firstWord === c) ?? null;
++}
++
++export function makeIntentClassifierNode(intentLLM: IIntentLLM) {
++  return async function intentClassifierNode(state: CareyBotState): Promise<NodeResult> {
++    const normalized = getLastUserInput(state);
++
++    // 1 ── Legacy numeric selection (also used by the nudge menu).
++    const parsed = parseInt(normalized.replace(/[.\s]/g, ''), 10);
++    if (VALID_OPTIONS.has(parsed)) {
++      return {
++        selectedOption: parsed as MenuOption,
++        conversationPhase: 'option',
++      };
++    }
++
++    // 2 ── Local crisis pre-check. Never depends on the LLM being up.
++    if (containsCrisisPhrase(normalized)) {
++      console.log('[intent] local crisis phrase matched → crisis');
++      return {
++        crisisDetected: true,
++        conversationPhase: 'crisis',
++        selectedOption: null,
++      };
++    }
++
++    // Nothing classifiable (empty after normalisation) → re-present menu.
++    if (!normalized) {
++      return { selectedOption: null, pendingResponse: FALLBACK_TEXT, conversationPhase: 'menu' };
++    }
++
++    // 3 ── LLM classification of the RAW user text (normalisation strips
++    //      signal the model can use, e.g. "???", emoji, casing).
++    const rawText =
++      [...state.messages].reverse().find(m => m.role === 'user')?.content ?? normalized;
++
++    let intent: Intent | null = null;
++    try {
++      const result = await intentLLM.chat(null, rawText);
++      intent = parseIntentReply(result.reply);
++      console.log(`[intent] llm reply="${result.reply.slice(0, 40)}" → ${intent}`);
++    } catch (err) {
++      console.error('[intent] classifier LLM failed — falling back to menu', err);
++    }
++
++    if (intent === 'CRISIS') {
++      return {
++        crisisDetected: true,
++        conversationPhase: 'crisis',
++        selectedOption: null,
++      };
++    }
++
++    if (intent && intent !== 'UNCLEAR') {
++      return {
++        selectedOption: INTENT_TO_OPTION[intent],
++        conversationPhase: 'option',
++      };
++    }
++
++    // 4 ── UNCLEAR or LLM failure → numbered menu as the safety net.
++    return {
++      selectedOption: null,
++      pendingResponse: FALLBACK_TEXT,
++      conversationPhase: 'menu',
++    };
++  };
++}
+diff --git a/src/nodes/menuPresenter.ts b/src/nodes/menuPresenter.ts
+index cc28e31..f1d7c33 100644
+--- a/src/nodes/menuPresenter.ts
++++ b/src/nodes/menuPresenter.ts
+@@ -1,10 +1,10 @@
+ import type { CareyBotState } from '../types/state';
+ import type { NodeResult } from '../types/nodes';
+-import { MENU_TEXT } from '../config/questionnaire';
++import { OPENING_TEXT } from '../config/questionnaire';
+ 
+ export function menuPresenter(_state: CareyBotState): NodeResult {
+   return {
+-    pendingResponse: MENU_TEXT,
++    pendingResponse: OPENING_TEXT,
+     conversationPhase: 'menu',
+     aiBotChatId: null,
+   };
+diff --git a/src/nodes/restartNode.ts b/src/nodes/restartNode.ts
+index 9206590..b2801ba 100644
+--- a/src/nodes/restartNode.ts
++++ b/src/nodes/restartNode.ts
+@@ -17,6 +17,8 @@ export function restartNode(_state: CareyBotState): NodeResult {
+     messages: [],
+     pendingResponse: AGE_CHECK_MESSAGE,
+     crisisDetected: false,
++    pendingHandoff: null,
++    socialCoachOffered: false,
+     aiBotChatId: null,
+   };
+ }
+diff --git a/src/nodes/router.ts b/src/nodes/router.ts
+index 4af986e..b861893 100644
+--- a/src/nodes/router.ts
++++ b/src/nodes/router.ts
+@@ -9,6 +9,7 @@ const OPTION_NODE: Record<number, string> = {
+ };
+ 
+ const MENU_KEYWORDS = new Set(['menu', 'back', 'back to menu', 'change', 'options']);
++const YES_WORDS = new Set(['yes', 'y', 'yeah', 'yah', 'ya', 'yup', 'sure', 'ok', 'okay', 'yes please', 'sure lah', 'can']);
+ 
+ export function router(state: CareyBotState): string {
+   const { conversationPhase, selectedOption } = state;
+@@ -41,11 +42,17 @@ export function router(state: CareyBotState): string {
+ 
+   if (conversationPhase === 'crisis') return 'emergencyHandler';
+ 
+-  if (conversationPhase === 'menu') return 'optionRouter';
++  if (conversationPhase === 'menu') return 'intentClassifierNode';
+ 
+   if (conversationPhase === 'option' && selectedOption) {
+-    if (MENU_KEYWORDS.has(getLastUserInput(state))) return 'menuPresenter';
+-    return OPTION_NODE[selectedOption] ?? 'optionRouter';
++    const input = getLastUserInput(state);
++    if (MENU_KEYWORDS.has(input)) return 'menuPresenter';
++    // Accepted social-coach handoff: Carey offered the coach last turn and the
++    // user said yes — switch to the coach (it resets the AIBots chat session).
++    if (state.pendingHandoff === 'socialCoach' && YES_WORDS.has(input)) {
++      return 'socialCoachNode';
++    }
++    return OPTION_NODE[selectedOption] ?? 'intentClassifierNode';
+   }
+ 
+   return 'sessionPersister';
+diff --git a/src/nodes/socialCoachNode.ts b/src/nodes/socialCoachNode.ts
+index 768d288..bf26006 100644
+--- a/src/nodes/socialCoachNode.ts
++++ b/src/nodes/socialCoachNode.ts
+@@ -1,7 +1,7 @@
+ import type { CareyBotState } from '../types/state';
+ import type { NodeResult } from '../types/nodes';
+ import { getLastUserInput } from '../types/nodes';
+-import { parseCrisisReply } from '../lib/crisisDetection';
++import { parseReplyTags } from '../lib/replyTags';
+ 
+ // Menu option 5 → the Growing We Social Coach. This is a SEPARATE bot on the
+ // AIBots/Directus platform (its own seeded system prompt), reached via a second
+@@ -26,7 +26,19 @@ export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITyping
+   return async function socialCoachNode(state: CareyBotState): Promise<NodeResult> {
+     const userText = getLastUserInput(state);
+ 
+-    const primeMessage = !state.aiBotChatId
++    // Handoff from Carey (user accepted the mid-chat offer): the existing
++    // aiBotChatId belongs to the Carey bot, so start a FRESH coach session.
++    // state.messages (passed as history) gives the coach the prior context.
++    const isHandoff = state.pendingHandoff === 'socialCoach';
++    const effectiveChatId = isHandoff ? null : state.aiBotChatId;
++
++    const primeMessage = isHandoff
++      ? `[SYSTEM CONTEXT] The user was talking with Carey and agreed to practise ` +
++        `a social situation with you. The conversation history shows what they ` +
++        `have been dealing with — acknowledge it briefly and go straight to ` +
++        `STEP 1 — CONTEXT CHECK for that situation. Do not run any triage or ` +
++        `screener. Keep it short and mobile-friendly.`
++      : !state.aiBotChatId
+       ? `[SYSTEM CONTEXT] This is the start of a new social coaching conversation. ` +
+         `The user has completed the CareyBot intake screening (risk level: ${state.tag ?? 'low'}) ` +
+         `and chose the social coach. Begin at STEP 1 — CONTEXT CHECK: warmly ask which social ` +
+@@ -39,15 +51,16 @@ export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITyping
+       typing.sendTypingIndicator(state.userId).catch(() => {});
+     }, 4000);
+ 
+-    const textForAI = !state.aiBotChatId ? 'Hi' : userText;
++    const textForAI = !effectiveChatId ? 'Hi' : userText;
+     const history = state.messages.slice(0, -1);
+     try {
+-      const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage, history);
+-      const { reply, isCrisis } = parseCrisisReply(result.reply);
++      const result = await aiBotsClient.chat(effectiveChatId, textForAI, primeMessage, history);
++      const { reply, isCrisis } = parseReplyTags(result.reply);
+       return {
+         aiBotChatId: result.chatId,
+         pendingResponse: reply,
+         selectedOption: 2,
++        pendingHandoff: null,
+         conversationPhase: isCrisis ? 'crisis' : 'option',
+         ...(isCrisis && { crisisDetected: true }),
+       };
+diff --git a/src/types/state.ts b/src/types/state.ts
+index d1c4a97..f1005f8 100644
+--- a/src/types/state.ts
++++ b/src/types/state.ts
+@@ -49,6 +49,13 @@ export interface CareyBotState {
+   // Set true when crisis detected mid free-text (Option 1)
+   crisisDetected: boolean;
+ 
++  // Social-coach handoff (set when Carey's reply carries a [SOCIAL] tag and we
++  // offer the coach; the router treats the next "yes" as a switch to option 2)
++  pendingHandoff: 'socialCoach' | null;
++
++  // True once the coach has been offered this session — prevents repeat nagging
++  socialCoachOffered: boolean;
++
+   // AIBots server-side chat session ID (created on first AI call, persisted across turns)
+   aiBotChatId: string | null;
+ }
+@@ -71,5 +78,7 @@ export const initialState = (
+   messages: [],
+   pendingResponse: null,
+   crisisDetected: false,
++  pendingHandoff: null,
++  socialCoachOffered: false,
+   aiBotChatId: null,
+ });

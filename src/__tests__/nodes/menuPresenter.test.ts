@@ -1,11 +1,11 @@
 import { menuPresenter } from '@/nodes/menuPresenter';
 import { makeState } from '@/__tests__/mocks';
-import { MENU_TEXT } from '@/config/questionnaire';
+import { OPENING_TEXT } from '@/config/questionnaire';
 
 describe('menuPresenter', () => {
-  it('returns the menu text as pendingResponse', () => {
+  it('returns the open-ended opening question as pendingResponse', () => {
     const result = menuPresenter(makeState());
-    expect(result.pendingResponse).toBe(MENU_TEXT);
+    expect(result.pendingResponse).toBe(OPENING_TEXT);
   });
 
   it('sets conversationPhase to menu', () => {

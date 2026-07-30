@@ -7,8 +7,9 @@ import { router } from '../nodes/router';
 import { questionnaireNode } from '../nodes/questionnaireNode';
 import { answerEvaluator } from '../nodes/answerEvaluator';
 import { makeEmergencyHandler } from '../nodes/emergencyHandler';
-import { menuPresenter } from '../nodes/menuPresenter';
-import { optionRouter } from '../nodes/optionRouter';
+import { makeMenuPresenter } from '../nodes/menuPresenter';
+import { makeIntentClassifierNode } from '../nodes/intentClassifierNode';
+import type { MenuMode } from '../lib/menuMode';
 import { makeResourceRedirectNode } from '../nodes/resourceRedirectNode';
 import { restartNode } from '../nodes/restartNode';
 import { ageCheckNode } from '../nodes/ageCheckNode';
@@ -44,7 +45,9 @@ export interface GraphServices {
   whitelist: IWhitelistService;
   session: ISessionManager;
   aiBots: IAIBotsClient;
-  socialCoach: IAIBotsClient; // separate AIBots/Directus bot for menu option 5
+  socialCoach: IAIBotsClient; // separate AIBots/Directus bot for menu option 2
+  intentLLM: IAIBotsClient;   // cheap DirectLLMClient seeded with INTENT_CLASSIFIER_PROMPT
+  menuMode: MenuMode;         // 'intent' | 'numbered' — A/B toggle for the entry UX
   typing: ITypingIndicator;
 }
 
@@ -65,6 +68,8 @@ const GraphAnnotation = Annotation.Root({
   messages:           Annotation<Message[]>({ reducer: (_, next) => next, default: () => [] }),
   pendingResponse:    Annotation<string | null>,
   crisisDetected:     Annotation<boolean>,
+  pendingHandoff:     Annotation<'socialCoach' | null>,
+  socialCoachOffered: Annotation<boolean>,
   aiBotChatId:        Annotation<string | null>,
 });
 
@@ -98,9 +103,15 @@ function routeFromSafetyGate(state: typeof GraphAnnotation.State): string {
   return next;
 }
 
-function routeFromOptionRouter(state: typeof GraphAnnotation.State): string {
+function routeFromIntentClassifier(state: typeof GraphAnnotation.State): string {
+  // Crisis (local phrase match or LLM label) → emergency response this turn.
+  if (state.crisisDetected && state.conversationPhase === 'crisis') {
+    console.log('[route] intentClassifier → emergencyHandler (crisis)');
+    return 'emergencyHandler';
+  }
   if (!state.selectedOption) {
-    console.log('[route] optionRouter → sessionPersister (invalid selection)');
+    // UNCLEAR / LLM failure — pendingResponse already carries the fallback menu.
+    console.log('[route] intentClassifier → sessionPersister (unclear → menu fallback)');
     return 'sessionPersister';
   }
   const map: Record<number, string> = {
@@ -109,7 +120,7 @@ function routeFromOptionRouter(state: typeof GraphAnnotation.State): string {
     3: 'resourceRedirectNode',
   };
   const next = map[state.selectedOption];
-  console.log(`[route] optionRouter → ${next} (selectedOption=${state.selectedOption})`);
+  console.log(`[route] intentClassifier → ${next} (selectedOption=${state.selectedOption})`);
   return next;
 }
 
@@ -122,6 +133,8 @@ export function buildGraph(services: GraphServices) {
   const socialCoach      = makeSocialCoachNode(services.socialCoach, services.typing);
   const resourceRedirect = makeResourceRedirectNode(services.aiBots, services.typing);
   const sessionPersist   = makeSessionPersister(services.session);
+  const menuPresenter    = makeMenuPresenter(services.menuMode);
+  const intentClassifier = makeIntentClassifierNode(services.intentLLM, services.menuMode);
 
   const graph = new StateGraph(GraphAnnotation)
 
@@ -136,7 +149,7 @@ export function buildGraph(services: GraphServices) {
     .addNode('safetyGateNode',       safetyGateNode)
     .addNode('emergencyHandler',     emergencyHandler)
     .addNode('menuPresenter',        menuPresenter)
-    .addNode('optionRouter',         optionRouter)
+    .addNode('intentClassifierNode', intentClassifier)
     .addNode('freeTextNode',         freeTextNode)
     .addNode('socialCoachNode',      socialCoach)
     .addNode('resourceRedirectNode', resourceRedirect)
@@ -156,7 +169,7 @@ export function buildGraph(services: GraphServices) {
       safetyGateNode:       'safetyGateNode',
       emergencyHandler:     'emergencyHandler',
       menuPresenter:        'menuPresenter',
-      optionRouter:         'optionRouter',
+      intentClassifierNode: 'intentClassifierNode',
       freeTextNode:         'freeTextNode',
       resourceRedirectNode: 'resourceRedirectNode',
       socialCoachNode:      'socialCoachNode',
@@ -178,8 +191,9 @@ export function buildGraph(services: GraphServices) {
       menuPresenter:    'menuPresenter',
     })
 
-    // ── optionRouter → option node | re-present menu ──
-    .addConditionalEdges('optionRouter', routeFromOptionRouter, {
+    // ── intentClassifier → crisis | option node | menu fallback ──
+    .addConditionalEdges('intentClassifierNode', routeFromIntentClassifier, {
+      emergencyHandler:     'emergencyHandler',
       freeTextNode:         'freeTextNode',
       resourceRedirectNode: 'resourceRedirectNode',
       socialCoachNode:      'socialCoachNode',

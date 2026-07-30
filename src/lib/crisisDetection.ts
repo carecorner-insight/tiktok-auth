@@ -1,27 +1,42 @@
+import { parseReplyTags } from './replyTags';
+
 export interface CrisisResult {
   reply: string;
   isCrisis: boolean;
 }
 
-// Detects a [CRISIS] tag anywhere in the reply, case-insensitively, tolerating
-// internal whitespace (e.g. "[ Crisis ]"). Used for the boolean check.
-const CRISIS_DETECT = /\[\s*crisis\s*\]/i;
-
-// Removal pattern: same tag plus any wrapping markdown emphasis (*, _, ~, `)
-// and trailing whitespace, matched globally so a tag anywhere is stripped.
-const CRISIS_STRIP = /[*_~`]*\[\s*crisis\s*\][*_~`]*\s*/gi;
-
 /**
- * Strips the [CRISIS] tag that the LLM emits when it enters State 8 (crisis
- * routing). Robust to case, markdown emphasis, internal spaces, and the tag
- * appearing anywhere in the message rather than only as a prefix.
- *
- * Returns the cleaned reply and whether a crisis tag was present.
+ * @deprecated Use parseReplyTags from './replyTags' — it handles [CRISIS] and
+ * [SOCIAL] in one pass. Kept as a thin delegate so existing imports and tests
+ * keep working during the migration.
  */
 export function parseCrisisReply(raw: string): CrisisResult {
-  const isCrisis = CRISIS_DETECT.test(raw);
-  if (!isCrisis) return { reply: raw, isCrisis: false };
+  const { reply, isCrisis } = parseReplyTags(raw);
+  return { reply, isCrisis };
+}
 
-  const reply = raw.replace(CRISIS_STRIP, '').trim();
-  return { reply, isCrisis: true };
+// ── Deterministic crisis phrase backstop ──────────────────────────────────────
+// High-precision phrases for detecting a crisis disclosure in the USER's message
+// without any LLM call. Input is expected pre-normalised by getLastUserInput()
+// (lowercased, punctuation stripped, so "don't" → "dont"). Broad single words
+// like "die" are deliberately excluded to avoid false positives; the LLM /
+// [CRISIS] tag catches phrasing this list misses. This exists so a disclosure is
+// caught even if every LLM/provider is unreachable, in ANY conversation phase.
+const CRISIS_PHRASES = [
+  'kill myself', 'killing myself', 'kill me',
+  'suicide', 'suicidal',
+  'end my life', 'ending my life', 'end it all',
+  'want to die', 'wanna die',
+  'wish i was dead', 'wish i were dead', 'better off dead',
+  'dont want to live', 'do not want to live', 'dont want to be alive',
+  'hurt myself', 'hurting myself', 'harm myself', 'harming myself',
+  'self harm', 'selfharm',
+  'not wake up', 'never wake up',
+  'not safe right now',
+  'unalive',
+];
+
+/** True when the pre-normalised user input contains a known crisis phrase. */
+export function containsCrisisPhrase(normalizedInput: string): boolean {
+  return CRISIS_PHRASES.some(p => normalizedInput.includes(p));
 }
