@@ -10,11 +10,12 @@ const MAX_ENTRIES = 500;
 const TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
 
 export interface EvalSummary {
-  id: string; // `${runId}__${persona}` — key to lazy-load the full record
+  id: string; // `${runId}__${persona}__${menuMode}` — key to lazy-load the full record
   runId: string;
   ts: number;
   persona: string;
   userType: string;
+  menuMode: string; // 'intent' | 'numbered' — which entry UX this run used
   outcomeLabel: string;
   status: 'completed' | 'error';
   referralPresentPct: number | null;
@@ -27,8 +28,9 @@ export interface EvalSummary {
   selectedOption: number | null;
 }
 
-export function resultId(runId: string, persona: string): string {
-  return `${runId}__${persona}`;
+export function resultId(runId: string, persona: string, menuMode?: string): string {
+  // menuMode keeps the two A/B variants of the same persona/run distinct.
+  return menuMode ? `${runId}__${persona}__${menuMode}` : `${runId}__${persona}`;
 }
 
 export async function pushEvalSummary(

@@ -144,21 +144,25 @@
         return Object.values(byRun).sort(function (a, b) { return a.ts - b.ts; }); // oldest → newest
       }
 
+      function passRateFor(rows) {
+        var done = rows.filter(function (r) { return r.status === 'completed'; });
+        var passed = done.filter(function (r) { return r.passed; }).length;
+        return done.length ? Math.round((passed / done.length) * 100) + '%' : '—';
+      }
+
       function renderKpis(runs) {
         var latest = runs[runs.length - 1];
         var personas = {};
         summaries.forEach(function (r) { personas[r.persona] = true; });
-        var passRate = '—';
-        if (latest) {
-          var done = latest.rows.filter(function (r) { return r.status === 'completed'; });
-          var passed = done.filter(function (r) { return r.passed; }).length;
-          passRate = done.length ? Math.round((passed / done.length) * 100) + '%' : '—';
-        }
+        var latestRows = latest ? latest.rows : [];
+        var intentRate = passRateFor(latestRows.filter(function (r) { return r.menuMode === 'intent'; }));
+        var numberedRate = passRateFor(latestRows.filter(function (r) { return r.menuMode === 'numbered'; }));
         var errCount = latest ? latest.rows.filter(function (r) { return r.status === 'error'; }).length : 0;
         var kpis = [
           { label: 'Runs', value: runs.length },
           { label: 'Personas', value: Object.keys(personas).length },
-          { label: 'Latest pass rate', value: passRate },
+          { label: 'Intent pass rate', value: intentRate },
+          { label: 'Numbered pass rate', value: numberedRate },
           { label: 'Errors (latest run)', value: errCount },
           { label: 'Last run', value: latest ? fmtTime(latest.ts) : '—' },
         ];
@@ -167,34 +171,40 @@
         }).join('');
       }
 
+      function modePill(mode) {
+        if (mode === 'intent') return '<span class="pill" style="background:#1f6feb;color:#fff">intent</span>';
+        if (mode === 'numbered') return '<span class="pill" style="background:#6e40c9;color:#fff">numbered</span>';
+        return '<span class="muted">—</span>';
+      }
+
       function tagPill(tag) { return tag ? '<span class="pill tag-' + esc(tag) + '">' + esc(tag) + '</span>' : '<span class="muted">—</span>'; }
 
       function renderScorecard(runs) {
         var latest = runs[runs.length - 1];
         var el = document.getElementById('scorecard');
         if (!latest) { el.innerHTML = '<p class="muted">No runs yet.</p>'; return; }
-        var rows = latest.rows.slice().sort(function (a, b) { return a.persona.localeCompare(b.persona); });
-        var head = '<tr><th>Persona</th><th>Type</th><th>Outcome</th><th>Status</th><th>Result</th>' +
-          '<th>Present %</th><th>Forbidden hits</th><th>Wellbeing</th><th>Final tag</th><th>Notes</th></tr>';
+        var rows = latest.rows.slice().sort(function (a, b) {
+          return a.persona.localeCompare(b.persona) || String(a.menuMode).localeCompare(String(b.menuMode));
+        });
+        var head = '<tr><th>Persona</th><th>Mode</th><th>Type</th><th>Outcome</th><th>Status</th><th>Result</th>' +
+          '<th>Present %</th><th>Forbidden hits</th><th>Final tag</th><th>Notes</th></tr>';
         var body = rows.map(function (r) {
           var result = r.status === 'error' ? '<span class="pill err">ERROR</span>'
             : (r.passed ? '<span class="pill pass">PASS</span>' : '<span class="pill fail">FAIL</span>');
           var present = r.referralPresentPct == null ? '<span class="muted">n/a</span>' : r.referralPresentPct + '%';
-          var wb = r.wellbeingCheckReached == null ? '<span class="muted">—</span>'
-            : (r.wellbeingCheckReached ? '<span class="pill pass">yes</span>' : '<span class="pill warn">no</span>');
           var notes = [];
           if (r.userType === 'troll' && r.referralAbsentCount > 0) notes.push('<span class="pill fail">PROMPT LEAK</span>');
           if (r.userType === 'elevated' && (r.finalTag === 'high' || r.crisisDetected)) notes.push('<span class="pill warn">over-escalated?</span>');
           if (r.userType === 'crisis' && !r.crisisDetected) notes.push('<span class="pill fail">no crisis route</span>');
           return '<tr class="clickable" data-id="' + esc(r.id) + '">' +
             '<td class="mono">' + esc(r.persona) + '</td>' +
+            '<td>' + modePill(r.menuMode) + '</td>' +
             '<td>' + esc(r.userType) + '</td>' +
             '<td class="muted">' + esc(r.outcomeLabel) + '</td>' +
             '<td>' + (r.status === 'error' ? '<span class="pill err">error</span>' : 'completed') + '</td>' +
             '<td>' + result + '</td>' +
             '<td>' + present + '</td>' +
             '<td>' + (r.referralAbsentCount > 0 ? '<span class="pill fail">' + r.referralAbsentCount + '</span>' : '0') + '</td>' +
-            '<td>' + wb + '</td>' +
             '<td>' + tagPill(r.finalTag) + '</td>' +
             '<td>' + (notes.join(' ') || '') + '</td>' +
           '</tr>';
@@ -206,23 +216,30 @@
       }
 
       function renderTrend(runs) {
-        var personas = {};
-        summaries.forEach(function (r) { personas[r.persona] = r.userType; });
-        var names = Object.keys(personas).sort();
-        // map runId -> persona -> row
+        // Row identity is persona + mode, so intent and numbered get their own
+        // lanes and never overwrite each other within a run.
+        var SEP = '';
+        var keys = {};
+        summaries.forEach(function (r) { keys[r.persona + SEP + (r.menuMode || '—')] = true; });
+        var names = Object.keys(keys).sort();
+        // map runId -> (persona+mode) -> row
         var lookup = {};
-        runs.forEach(function (run) { lookup[run.runId] = {}; run.rows.forEach(function (r) { lookup[run.runId][r.persona] = r; }); });
-        var head = '<tr><th style="text-align:left">Persona</th>' + runs.map(function (run) {
+        runs.forEach(function (run) {
+          lookup[run.runId] = {};
+          run.rows.forEach(function (r) { lookup[run.runId][r.persona + SEP + (r.menuMode || '—')] = r; });
+        });
+        var head = '<tr><th style="text-align:left">Persona</th><th style="text-align:left">Mode</th>' + runs.map(function (run) {
           return '<th title="' + esc(fmtTime(run.ts)) + '">' + esc(new Date(run.ts).toLocaleDateString([], { month:'short', day:'numeric' })) + '</th>';
         }).join('') + '</tr>';
         var body = names.map(function (name) {
+          var parts = name.split(SEP);
           var cells = runs.map(function (run) {
             var r = lookup[run.runId][name];
             var cls = !r ? 'none' : (r.status === 'error' ? 'err' : (r.passed ? 'pass' : 'fail'));
-            var tip = r ? (name + ' — ' + (r.status === 'error' ? 'error' : (r.passed ? 'pass' : 'fail'))) : 'not run';
+            var tip = r ? (parts[0] + ' [' + parts[1] + '] — ' + (r.status === 'error' ? 'error' : (r.passed ? 'pass' : 'fail'))) : 'not run';
             return '<td>' + (r ? '<span class="cell ' + cls + '" title="' + esc(tip) + '" data-id="' + esc(r.id) + '"></span>' : '<span class="cell none"></span>') + '</td>';
           }).join('');
-          return '<tr><td style="text-align:left" class="mono">' + esc(name) + '</td>' + cells + '</tr>';
+          return '<tr><td style="text-align:left" class="mono">' + esc(parts[0]) + '</td><td style="text-align:left">' + modePill(parts[1]) + '</td>' + cells + '</tr>';
         }).join('');
         document.getElementById('trend').innerHTML = '<table class="grid">' + head + body + '</table>';
         document.querySelectorAll('#trend .cell[data-id]').forEach(function (c) {
@@ -260,7 +277,7 @@
         var err = r.errorDetail ? '<p style="color:var(--fail)">Error: ' + esc(r.errorDetail) + '</p>' : '';
         document.getElementById('modalRoot').querySelector('.modal').innerHTML =
           '<button class="close" onclick="document.getElementById(\'modalRoot\').innerHTML=\'\'">✕ close</button>' +
-          '<h3 class="mono">' + esc(r.persona) + '</h3>' +
+          '<h3 class="mono">' + esc(r.persona) + ' ' + modePill(r.menuMode) + '</h3>' +
           '<p class="muted">' + esc(r.outcomeLabel || '') + ' · final tag ' + tagPill(r.finalTag) + ' · phase ' + esc(r.finalPhase || '—') + '</p>' +
           err + req + forb + wb +
           '<h2 style="margin-top:18px">Transcript</h2>' + (turns || '<p class="muted">No transcript.</p>');

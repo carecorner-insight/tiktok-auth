@@ -43,13 +43,15 @@ async function handlePost(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'runId and persona are required' });
   }
 
-  const id = resultId(String(r.runId), String(r.persona));
+  const menuMode = r.menuMode === 'numbered' ? 'numbered' : r.menuMode === 'intent' ? 'intent' : '';
+  const id = resultId(String(r.runId), String(r.persona), menuMode || undefined);
   const summary: EvalSummary = {
     id,
     runId: String(r.runId),
     ts: typeof r.ts === 'number' ? r.ts : Date.now(),
     persona: String(r.persona),
     userType: String(r.userType ?? ''),
+    menuMode,
     outcomeLabel: String(r.outcomeLabel ?? ''),
     status: r.status === 'error' ? 'error' : 'completed',
     referralPresentPct:

@@ -18,6 +18,7 @@
 
 import OpenAI from 'openai';
 import type { Platform } from '../types/state';
+import type { MenuMode } from '../lib/menuMode';
 import { EVAL_PERSONAS, type EvalPersona } from '../config/evalPersonas';
 import { runAssertions } from '../lib/evalAssertions';
 
@@ -25,6 +26,13 @@ const SIM_BASE_URL = (process.env.SIM_BASE_URL ?? '').replace(/\/$/, '');
 const SIM_TOKEN = process.env.SIM_TOKEN ?? '';
 const SIM_PLATFORM: Platform = 'telegram';
 const MAX_TURNS = 20;
+
+// Which entry UX(es) to evaluate. Defaults to BOTH so every cycle produces a
+// direct intent-vs-numbered comparison; set EVAL_MENU_MODES=intent to run one.
+const MENU_MODES: MenuMode[] = (process.env.EVAL_MENU_MODES ?? 'intent,numbered')
+  .split(',')
+  .map(s => s.trim())
+  .filter((s): s is MenuMode => s === 'intent' || s === 'numbered');
 
 interface SimReply {
   response: string;
@@ -44,12 +52,17 @@ interface TranscriptTurn {
   phase?: string;
 }
 
-async function sendToBot(userId: string, text: string, reset = false): Promise<SimReply> {
+async function sendToBot(
+  userId: string,
+  text: string,
+  menuMode: MenuMode,
+  reset = false,
+): Promise<SimReply> {
   const res = await fetch(`${SIM_BASE_URL}/api/sim`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-sim-token': SIM_TOKEN },
-    body: JSON.stringify({ platform: SIM_PLATFORM, userId, text, reset }),
-  }); 
+    body: JSON.stringify({ platform: SIM_PLATFORM, userId, text, reset, menuMode }),
+  });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
     throw new Error(`/api/sim ${res.status} ${res.statusText}: ${detail}`);
@@ -59,11 +72,17 @@ async function sendToBot(userId: string, text: string, reset = false): Promise<S
 
 // Decide the youth's next message: scripted during the deterministic phases,
 // roleplay (OpenAI) once the conversation opens up.
+//
+// The menu phase is mode-dependent: in NUMBERED mode the youth taps a digit
+// (menuDefault); in INTENT mode there is no menu to tap, so the youth states
+// their intent in natural language (roleplay) and lets the classifier route it —
+// which is exactly the behaviour we're trying to measure.
 async function nextYouthMessage(
   persona: EvalPersona,
   openai: OpenAI,
   last: SimReply,
   history: OpenAI.Chat.ChatCompletionMessageParam[],
+  menuMode: MenuMode,
 ): Promise<string> {
   const phase = last.state.conversationPhase;
   if (phase === 'ageCheck') return persona.ageAnswer;
@@ -71,9 +90,9 @@ async function nextYouthMessage(
     return persona.screenerAnswers[last.state.questionIndex] ?? 'no';
   }
   if (phase === 'safetyCheck') return persona.safetyAnswer ?? 'yes';
-  if (phase === 'menu') return persona.menuDefault ?? '1';
+  if (phase === 'menu' && menuMode === 'numbered') return persona.menuDefault ?? '1';
 
-  // option / crisis / anything open-ended → roleplay
+  // intent-mode menu / option / crisis / anything open-ended → roleplay
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: history,
@@ -81,8 +100,13 @@ async function nextYouthMessage(
   return completion.choices[0].message.content ?? '...';
 }
 
-async function runPersona(persona: EvalPersona, runId: string, openai: OpenAI) {
-  const userId = `eval-${persona.key}-${Date.now()}`;
+async function runPersona(
+  persona: EvalPersona,
+  runId: string,
+  openai: OpenAI,
+  menuMode: MenuMode,
+) {
+  const userId = `eval-${persona.key}-${menuMode}-${Date.now()}`;
   const transcript: TranscriptTurn[] = [];
   const history: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: persona.rolePrompt },
@@ -93,16 +117,16 @@ async function runPersona(persona: EvalPersona, runId: string, openai: OpenAI) {
   let last: SimReply | undefined;
 
   try {
-    last = await sendToBot(userId, 'hi', true);
+    last = await sendToBot(userId, 'hi', menuMode, true);
     transcript.push({ role: 'carey', text: last.response, phase: last.state.conversationPhase });
     history.push({ role: 'user', content: last.response });
 
     for (let turn = 1; turn <= MAX_TURNS; turn++) {
-      const youth = await nextYouthMessage(persona, openai, last, history);
+      const youth = await nextYouthMessage(persona, openai, last, history, menuMode);
       transcript.push({ role: 'youth', text: youth });
       history.push({ role: 'assistant', content: youth });
 
-      last = await sendToBot(userId, youth);
+      last = await sendToBot(userId, youth, menuMode);
       transcript.push({ role: 'carey', text: last.response, phase: last.state.conversationPhase });
       history.push({ role: 'user', content: last.response });
     }
@@ -120,6 +144,7 @@ async function runPersona(persona: EvalPersona, runId: string, openai: OpenAI) {
     ts: Date.now(),
     persona: persona.key,
     userType: persona.userType,
+    menuMode,
     outcomeLabel: persona.outcomeLabel,
     status,
     errorDetail,
@@ -155,7 +180,7 @@ async function runPersona(persona: EvalPersona, runId: string, openai: OpenAI) {
   }
 
   console.log(
-    `[eval] ${persona.key}: status=${status} passed=${result.passed} ` +
+    `[eval] ${persona.key} [${menuMode}]: status=${status} passed=${result.passed} ` +
       `present%=${result.referralPresentPct} absent=${result.referralAbsentCount} ` +
       `wellbeing=${result.wellbeingCheckReached} tag=${result.finalTag}`,
   );
@@ -169,13 +194,25 @@ async function main() {
     process.exit(1);
   }
 
+  if (MENU_MODES.length === 0) {
+    console.error('EVAL_MENU_MODES must include at least one of: intent, numbered');
+    process.exit(1);
+  }
+
   const openai = new OpenAI();
   const runId = `run-${Date.now()}`;
-  console.log(`\n=== CareyBot eval ${runId} — ${EVAL_PERSONAS.length} personas (sequential) ===`);
+  console.log(
+    `\n=== CareyBot eval ${runId} — ${EVAL_PERSONAS.length} personas ` +
+      `× ${MENU_MODES.length} mode(s) [${MENU_MODES.join(', ')}] (sequential) ===`,
+  );
 
-  // Sequential — gentle on the gov AIBots platform.
-  for (const persona of EVAL_PERSONAS) {
-    await runPersona(persona, runId, openai);
+  // Sequential — gentle on the gov AIBots platform. Each persona runs once per
+  // mode so the same runId carries a side-by-side intent-vs-numbered comparison.
+  for (const menuMode of MENU_MODES) {
+    console.log(`\n--- mode: ${menuMode} ---`);
+    for (const persona of EVAL_PERSONAS) {
+      await runPersona(persona, runId, openai, menuMode);
+    }
   }
 
   console.log(`=== eval ${runId} complete ===`);

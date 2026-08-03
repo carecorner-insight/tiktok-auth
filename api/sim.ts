@@ -54,6 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     userId?: string;
     text?: string;
     reset?: boolean;
+    menuMode?: string;
   };
   const platform: Platform = body.platform === 'tiktok' ? 'tiktok' : 'telegram';
   const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
@@ -65,7 +66,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const redis = getRedis();
   const session = new SessionManager(redis);
-  const menuMode = await getMenuMode(redis);
+  // Per-request override lets the eval harness pin a mode and A/B the two UXes
+  // without touching the global flag (which the webhook and live UAT use).
+  const overrideMode =
+    body.menuMode === 'intent' || body.menuMode === 'numbered' ? body.menuMode : undefined;
+  const menuMode = overrideMode ?? (await getMenuMode(redis));
 
   // Start a fresh conversation when requested (e.g. turn 0 of a run).
   if (body.reset) {
@@ -117,6 +122,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         crisisDetected: result.state.crisisDetected,
         selectedOption: result.state.selectedOption,
         isAuthorized: result.state.isAuthorized,
+        menuMode,
       },
     });
   } catch (err) {
