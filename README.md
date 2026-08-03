@@ -101,6 +101,10 @@ Watch real conversations live during testing. `public/uat-logs.html` polls `/api
 ### Scheduled eval harness
 `src/scripts/run-eval.ts` (GitHub Actions, every 2 days) runs a roster of personas ([`src/config/evalPersonas.ts`](src/config/evalPersonas.ts)) through `/api/sim` — **scripted answers during the screener, LLM roleplay after** — then runs deterministic assertions (correct referral present %, forbidden referral count, no false crisis, prompt-leak for trolls). Results dual-write: summary → Redis, full record → SharePoint. Viewed in `public/eval-dashboard.html`.
 
+The roleplay "youth" runs on **Qwen** via DashScope (cheaper than OpenAI) — set `QWEN_API_KEY` (and `QWEN_BASE_URL` only if not using the default Singapore endpoint). Model defaults to `qwen-plus`; override with `EVAL_ROLEPLAY_MODEL` (this only changes the *simulated user*, not Carey).
+
+**Menu-mode A/B:** each persona runs under **both** entry UXes — `intent` (classifier routes free text) and `numbered` (tap a digit) — so the dashboard compares them side by side. Control via `EVAL_MENU_MODES` (default `intent,numbered`; set to one mode to halve the run). The sim pins the mode per-request via a `menuMode` body field, independent of the global `menu:mode` flag the webhook/UAT use.
+
 ### Demographics
 Actual age is logged once per user (Redis NX dedup, ~1yr) to a SharePoint list via `DEMOGRAPHICS_WEBHOOK_URL`.
 
@@ -140,8 +144,10 @@ Actual age is logged once per user (Redis NX dedup, ~1yr) to a SharePoint list v
 | `UAT_LOG_TOKEN` | Human read access — UAT log + eval dashboard |
 | `SIM_TOKEN` | Machine access — `/api/sim` + eval result writes |
 | `BYPASS_AUTH` | `true` skips the whitelist check (**load-test only**, never prod) |
-| `USE_DIRECT_LLM`, `QWEN_API_KEY`, `QWEN_MODEL`, `QWEN_BASE_URL` | Direct-LLM (Qwen) experiment for Carey |
-| `OPENAI_API_KEY` | Eval/sim "youth" roleplay (local + GitHub Actions only) |
+| `USE_DIRECT_LLM`, `QWEN_API_KEY`, `QWEN_MODEL`, `QWEN_BASE_URL` | Direct-LLM (Qwen) experiment for Carey; `QWEN_API_KEY`/`QWEN_BASE_URL` also drive the eval "youth" roleplay (add as a GitHub Actions secret for the scheduled run) |
+| `EVAL_ROLEPLAY_MODEL` | Eval "youth" roleplay model (default `qwen-plus`) |
+| `EVAL_MENU_MODES` | Which entry UX(es) the eval runs — `intent`, `numbered`, or both (default) |
+| `OPENAI_API_KEY` | Local `npm run simulate` roleplay only (the scheduled eval now uses Qwen) |
 | `SIM_BASE_URL` | Deployment URL for the sim/eval scripts |
 
 ---

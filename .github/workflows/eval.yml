@@ -33,6 +33,9 @@ jobs:
         env:
           SIM_BASE_URL: ${{ secrets.SIM_BASE_URL }}
           SIM_TOKEN: ${{ secrets.SIM_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Roleplay "youth" runs on Qwen (DashScope) — cheaper than OpenAI.
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          QWEN_BASE_URL: ${{ secrets.QWEN_BASE_URL }}
+          EVAL_ROLEPLAY_MODEL: ${{ vars.EVAL_ROLEPLAY_MODEL }}
           # Scheduled runs evaluate both modes; manual runs can override.
           EVAL_MENU_MODES: ${{ github.event.inputs.menu_modes || 'intent,numbered' }}

@@ -11,9 +11,11 @@
  * Intended to run from a GitHub Actions scheduled workflow (no Vercel time limit).
  *
  * Env:
- *   SIM_BASE_URL   - deployment base URL
- *   SIM_TOKEN      - token for /api/sim AND /api/eval-results POST
- *   OPENAI_API_KEY - for the roleplay "youth"
+ *   SIM_BASE_URL       - deployment base URL
+ *   SIM_TOKEN          - token for /api/sim AND /api/eval-results POST
+ *   QWEN_API_KEY       - DashScope key for the roleplay "youth" (cheaper than OpenAI)
+ *   QWEN_BASE_URL      - optional; defaults to the Singapore DashScope endpoint
+ *   EVAL_ROLEPLAY_MODEL- optional; defaults to qwen-plus
  */
 
 import OpenAI from 'openai';
@@ -27,9 +29,18 @@ const SIM_TOKEN = process.env.SIM_TOKEN ?? '';
 const SIM_PLATFORM: Platform = 'telegram';
 const MAX_TURNS = 20;
 
+// The roleplay "youth" runs on Qwen via DashScope's OpenAI-compatible endpoint —
+// same wiring as DirectLLMClient, and materially cheaper than gpt-4o-mini.
+// Use `||` (not `??`): an unset GitHub secret/var arrives as an empty string,
+// which must fall through to the default rather than becoming a blank URL/model.
+const QWEN_API_KEY = process.env.QWEN_API_KEY ?? '';
+const QWEN_BASE_URL =
+  process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
+const ROLEPLAY_MODEL = process.env.EVAL_ROLEPLAY_MODEL || 'qwen-plus';
+
 // Which entry UX(es) to evaluate. Defaults to BOTH so every cycle produces a
 // direct intent-vs-numbered comparison; set EVAL_MENU_MODES=intent to run one.
-const MENU_MODES: MenuMode[] = (process.env.EVAL_MENU_MODES ?? 'intent,numbered')
+const MENU_MODES: MenuMode[] = (process.env.EVAL_MENU_MODES || 'intent,numbered')
   .split(',')
   .map(s => s.trim())
   .filter((s): s is MenuMode => s === 'intent' || s === 'numbered');
@@ -94,7 +105,7 @@ async function nextYouthMessage(
 
   // intent-mode menu / option / crisis / anything open-ended → roleplay
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: ROLEPLAY_MODEL,
     messages: history,
   });
   return completion.choices[0].message.content ?? '...';
@@ -189,8 +200,8 @@ async function runPersona(
 }
 
 async function main() {
-  if (!SIM_BASE_URL || !SIM_TOKEN) {
-    console.error('Set SIM_BASE_URL and SIM_TOKEN (and OPENAI_API_KEY).');
+  if (!SIM_BASE_URL || !SIM_TOKEN || !QWEN_API_KEY) {
+    console.error('Set SIM_BASE_URL, SIM_TOKEN and QWEN_API_KEY.');
     process.exit(1);
   }
 
@@ -199,7 +210,7 @@ async function main() {
     process.exit(1);
   }
 
-  const openai = new OpenAI();
+  const openai = new OpenAI({ apiKey: QWEN_API_KEY, baseURL: QWEN_BASE_URL });
   const runId = `run-${Date.now()}`;
   console.log(
     `\n=== CareyBot eval ${runId} — ${EVAL_PERSONAS.length} personas ` +
