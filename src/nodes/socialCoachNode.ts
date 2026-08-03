@@ -3,11 +3,11 @@ import type { NodeResult } from '../types/nodes';
 import { getLastUserInput } from '../types/nodes';
 import { parseReplyTags } from '../lib/replyTags';
 
-// Menu option 5 → the Growing We Social Coach. This is a SEPARATE bot on the
+// Menu option 2 → the Growing We Social Coach. This is a SEPARATE bot on the
 // AIBots/Directus platform (its own seeded system prompt), reached via a second
 // AIBotsClient injected as `socialCoach`. It reuses the same crisis plumbing:
 // the coach's prompt must prefix replies with [CRISIS] on distress so
-// parseCrisisReply routes the turn to emergencyHandler.
+// parseReplyTags routes the turn to emergencyHandler.
 
 interface IAIBotsClient {
   chat(
@@ -25,18 +25,23 @@ interface ITypingIndicator {
 export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
   return async function socialCoachNode(state: CareyBotState): Promise<NodeResult> {
     const userText = getLastUserInput(state);
+    const rawText =
+      [...state.messages].reverse().find(m => m.role === 'user')?.content ?? userText;
 
-    // Handoff from Carey (user accepted the mid-chat offer): the existing
-    // aiBotChatId belongs to the Carey bot, so start a FRESH coach session.
-    // state.messages (passed as history) gives the coach the prior context.
-    const isHandoff = state.pendingHandoff === 'socialCoach';
-    const effectiveChatId = isHandoff ? null : state.aiBotChatId;
+    // A "bridge" is any entry into the coach that isn't a continuation of an
+    // existing coach session: the numbered-mode confirm handoff (pendingHandoff),
+    // or an intent-mode seamless switch (justSwitchedLane). Either way the current
+    // aiBotChatId belongs to a DIFFERENT bot, so we start a FRESH coach session and
+    // pass state.messages as history to give the coach the prior context.
+    const isBridge =
+      state.pendingHandoff === 'socialCoach' || (!state.aiBotChatId && state.justSwitchedLane);
+    const effectiveChatId = isBridge ? null : state.aiBotChatId;
 
-    const primeMessage = isHandoff
-      ? `[SYSTEM CONTEXT] The user was talking with Carey and agreed to practise ` +
-        `a social situation with you. The conversation history shows what they ` +
-        `have been dealing with — acknowledge it briefly and go straight to ` +
-        `STEP 1 — CONTEXT CHECK for that situation. Do not run any triage or ` +
+    const primeMessage = isBridge
+      ? `[SYSTEM CONTEXT] The user was just talking with Carey and now wants to ` +
+        `work on a social situation with you. The conversation history shows what ` +
+        `they have been dealing with — acknowledge it briefly in ONE line, then go ` +
+        `to STEP 1 — CONTEXT CHECK for that situation. Do not run any triage or ` +
         `screener. Keep it short and mobile-friendly.`
       : !state.aiBotChatId
       ? `[SYSTEM CONTEXT] This is the start of a new social coaching conversation. ` +
@@ -51,7 +56,11 @@ export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITyping
       typing.sendTypingIndicator(state.userId).catch(() => {});
     }, 4000);
 
-    const textForAI = !effectiveChatId ? 'Hi' : userText;
+    // Forward the user's real message so the coach responds to what they actually
+    // said. Only fall back to 'Hi' when a fresh session was entered via a bare
+    // menu digit (nothing meaningful to forward).
+    const isBareMenuDigit = /^[123]$/.test(userText.replace(/[.\s]/g, ''));
+    const textForAI = !effectiveChatId && isBareMenuDigit ? 'Hi' : rawText;
     const history = state.messages.slice(0, -1);
     try {
       const result = await aiBotsClient.chat(effectiveChatId, textForAI, primeMessage, history);
@@ -61,6 +70,7 @@ export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITyping
         pendingResponse: reply,
         selectedOption: 2,
         pendingHandoff: null,
+        justSwitchedLane: false,
         conversationPhase: isCrisis ? 'crisis' : 'option',
         ...(isCrisis && { crisisDetected: true }),
       };

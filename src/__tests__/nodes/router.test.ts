@@ -1,6 +1,9 @@
-import { router } from '@/nodes/router';
+import { router, makeRouter } from '@/nodes/router';
 import { makeState } from '@/__tests__/mocks';
 import { TOTAL_QUESTIONS } from '@/config/questionnaire';
+
+const numberedRouter = makeRouter('numbered');
+const intentRouter = makeRouter('intent');
 
 // ── Helper factories ──────────────────────────────────────────────────────────
 
@@ -140,16 +143,33 @@ describe('router — menu phase', () => {
 // ── option phase ──────────────────────────────────────────────────────────────
 
 describe('router — option phase', () => {
-  it('routes to freeTextNode for option 1', () => {
-    expect(router(makeState({ conversationPhase: 'option', selectedOption: 1 }))).toBe('freeTextNode');
+  // NUMBERED mode: option phase goes straight to the selected lane (no re-classify).
+  it('routes to freeTextNode for option 1 (numbered mode)', () => {
+    expect(numberedRouter(makeState({ conversationPhase: 'option', selectedOption: 1 }))).toBe('freeTextNode');
   });
 
-  it('routes to socialCoachNode for option 2', () => {
-    expect(router(makeState({ conversationPhase: 'option', selectedOption: 2 }))).toBe('socialCoachNode');
+  it('routes to socialCoachNode for option 2 (numbered mode)', () => {
+    expect(numberedRouter(makeState({ conversationPhase: 'option', selectedOption: 2 }))).toBe('socialCoachNode');
   });
 
-  it('routes to resourceRedirectNode for option 3', () => {
-    expect(router(makeState({ conversationPhase: 'option', selectedOption: 3 }))).toBe('resourceRedirectNode');
+  it('routes to resourceRedirectNode for option 3 (numbered mode)', () => {
+    expect(numberedRouter(makeState({ conversationPhase: 'option', selectedOption: 3 }))).toBe('resourceRedirectNode');
+  });
+
+  // INTENT mode: every in-lane turn is re-classified so the bot can switch lanes.
+  it('re-routes in-lane turns to intentClassifierNode (intent mode)', () => {
+    expect(intentRouter(makeState({ conversationPhase: 'option', selectedOption: 1 }))).toBe('intentClassifierNode');
+    expect(intentRouter(makeState({ conversationPhase: 'option', selectedOption: 2 }))).toBe('intentClassifierNode');
+  });
+
+  it('still honours "menu"/"back" before re-classifying (intent mode)', () => {
+    const state = withUserMsg('menu', { conversationPhase: 'option', selectedOption: 1 });
+    expect(intentRouter(state)).toBe('menuPresenter');
+  });
+
+  it('still fires the crisis backstop before re-classifying (intent mode)', () => {
+    const state = withUserMsg('i want to kill myself', { conversationPhase: 'option', selectedOption: 1 });
+    expect(intentRouter(state)).toBe('emergencyHandler');
   });
 
   it('routes to menuPresenter when user types "menu"', () => {
@@ -179,7 +199,9 @@ describe('router — option phase', () => {
 
   it('does NOT route to menuPresenter for regular conversation in option phase', () => {
     const state = withUserMsg('I feel anxious', { conversationPhase: 'option', selectedOption: 1 });
-    expect(router(state)).toBe('freeTextNode');
+    // numbered mode stays in the lane; intent mode re-classifies — neither dumps to menu.
+    expect(numberedRouter(state)).toBe('freeTextNode');
+    expect(intentRouter(state)).toBe('intentClassifierNode');
   });
 });
 

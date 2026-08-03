@@ -3,7 +3,7 @@ import type { CareyBotState, Platform, ConversationPhase, MenuOption, Message } 
 import type { tag } from '../types/state';
 import { TOTAL_QUESTIONS } from '../config/questionnaire';
 
-import { router } from '../nodes/router';
+import { makeRouter } from '../nodes/router';
 import { questionnaireNode } from '../nodes/questionnaireNode';
 import { answerEvaluator } from '../nodes/answerEvaluator';
 import { makeEmergencyHandler } from '../nodes/emergencyHandler';
@@ -70,21 +70,25 @@ const GraphAnnotation = Annotation.Root({
   crisisDetected:     Annotation<boolean>,
   pendingHandoff:     Annotation<'socialCoach' | null>,
   socialCoachOffered: Annotation<boolean>,
+  justSwitchedLane:   Annotation<boolean>,
   aiBotChatId:        Annotation<string | null>,
 });
 
 // ── Routing functions (used in addConditionalEdges) ───────────────────────────
 
-// After auth check, call the router directly to get the target node.
-// Unauthorized users end here; authorized users are dispatched by phase.
-function routeFromAuth(state: typeof GraphAnnotation.State): string {
-  if (!state.isAuthorized) {
-    console.log('[route] auth → END (unauthorized)');
-    return END;
-  }
-  const next = router(state as CareyBotState);
-  console.log(`[route] auth → ${next}`);
-  return next;
+// After auth check, call the router to get the target node. Unauthorized users
+// end here; authorized users are dispatched by phase. The router is mode-aware
+// (intent re-classifies in-lane turns), so it's built per-graph from menuMode.
+function makeRouteFromAuth(router: (s: CareyBotState) => string) {
+  return function routeFromAuth(state: typeof GraphAnnotation.State): string {
+    if (!state.isAuthorized) {
+      console.log('[route] auth → END (unauthorized)');
+      return END;
+    }
+    const next = router(state as CareyBotState);
+    console.log(`[route] auth → ${next}`);
+    return next;
+  };
 }
 
 function routeFromAnswerEvaluator(state: typeof GraphAnnotation.State): string {
@@ -129,12 +133,13 @@ function routeFromIntentClassifier(state: typeof GraphAnnotation.State): string 
 export function buildGraph(services: GraphServices) {
   const authGuard        = makeAuthGuard(services.whitelist);
   const emergencyHandler = makeEmergencyHandler(services.aiBots, services.typing);
-  const freeTextNode     = makeFreeTextNode(services.aiBots, services.typing);
+  const freeTextNode     = makeFreeTextNode(services.aiBots, services.typing, services.menuMode);
   const socialCoach      = makeSocialCoachNode(services.socialCoach, services.typing);
   const resourceRedirect = makeResourceRedirectNode(services.aiBots, services.typing);
   const sessionPersist   = makeSessionPersister(services.session);
   const menuPresenter    = makeMenuPresenter(services.menuMode);
   const intentClassifier = makeIntentClassifierNode(services.intentLLM, services.menuMode);
+  const routeFromAuth    = makeRouteFromAuth(makeRouter(services.menuMode));
 
   const graph = new StateGraph(GraphAnnotation)
 

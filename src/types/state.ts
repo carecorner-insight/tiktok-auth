@@ -50,11 +50,18 @@ export interface CareyBotState {
   crisisDetected: boolean;
 
   // Social-coach handoff (set when Carey's reply carries a [SOCIAL] tag and we
-  // offer the coach; the router treats the next "yes" as a switch to option 2)
+  // offer the coach; the router treats the next "yes" as a switch to option 2).
+  // Used only in NUMBERED mode's confirm-based offer.
   pendingHandoff: 'socialCoach' | null;
 
   // True once the coach has been offered this session — prevents repeat nagging
   socialCoachOffered: boolean;
+
+  // Set true for exactly one turn when the intent classifier seamlessly switches
+  // the user into a NEW lane mid-conversation (intent mode). Tells the target
+  // lane node to start a fresh backend session, forward the prior transcript as
+  // context, and open with a brief bridging line. Cleared by the node that reads it.
+  justSwitchedLane: boolean;
 
   // AIBots server-side chat session ID (created on first AI call, persisted across turns)
   aiBotChatId: string | null;
@@ -80,5 +87,6 @@ export const initialState = (
   crisisDetected: false,
   pendingHandoff: null,
   socialCoachOffered: false,
+  justSwitchedLane: false,
   aiBotChatId: null,
 });

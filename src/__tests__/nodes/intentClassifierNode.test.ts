@@ -53,7 +53,7 @@ describe('intentClassifierNode', () => {
     const node = makeIntentClassifierNode(llm);
 
     const r1 = await node(stateWithInput('1'));
-    expect(r1).toEqual({ selectedOption: 1, conversationPhase: 'option' });
+    expect(r1).toEqual({ selectedOption: 1, conversationPhase: 'option', justSwitchedLane: false });
 
     const r2 = await node(stateWithInput(' 2. '));
     expect(r2.selectedOption).toBe(2);
@@ -77,8 +77,8 @@ describe('intentClassifierNode', () => {
     const llm = makeLLMMock('TALK');
     const node = makeIntentClassifierNode(llm);
     const result = await node(stateWithInput('school has been stressing me out'));
-    expect(result).toEqual({ selectedOption: 1, conversationPhase: 'option' });
-    expect(llm.chat).toHaveBeenCalledWith(null, 'school has been stressing me out');
+    expect(result).toEqual({ selectedOption: 1, conversationPhase: 'option', justSwitchedLane: false });
+    expect(llm.chat).toHaveBeenCalledWith(null, 'school has been stressing me out', undefined, undefined);
   });
 
   it('classifies SOCIAL via the LLM and selects option 2', async () => {
@@ -130,5 +130,87 @@ describe('intentClassifierNode', () => {
     expect(result.crisisDetected).toBe(true);
     expect(result.conversationPhase).toBe('crisis');
     expect(llm.chat).not.toHaveBeenCalled();
+  });
+});
+
+// ── Re-evaluation: intent mode re-runs on every in-lane turn so the bot can
+//    seamlessly switch lanes mid-conversation. Default is to STAY. ────────────
+
+const inLaneState = (text: string, option: 1 | 2 | 3) =>
+  makeState({
+    conversationPhase: 'option',
+    selectedOption: option,
+    aiBotChatId: 'chat-existing',
+    messages: [
+      { role: 'assistant', content: 'an earlier reply', timestamp: 1 },
+      { role: 'user', content: text, timestamp: 2 },
+    ],
+  });
+
+describe('intentClassifierNode — re-evaluation (in-lane, intent mode)', () => {
+  it('stays in the current lane when intent is unchanged (session preserved)', async () => {
+    const llm = makeLLMMock('TALK');
+    const result = await makeIntentClassifierNode(llm)(inLaneState('school is still rough', 1));
+    expect(result.selectedOption).toBe(1);
+    expect(result.justSwitchedLane).toBe(false);
+    expect(result.aiBotChatId).toBeUndefined(); // not reset → backend session kept
+    expect(result.pendingResponse).toBeUndefined();
+  });
+
+  it('switches lanes on a confident different intent (fresh session + bridge flag)', async () => {
+    const llm = makeLLMMock('SOCIAL');
+    const result = await makeIntentClassifierNode(llm)(
+      inLaneState('i really need to apologise to my friend', 1),
+    );
+    expect(result.selectedOption).toBe(2);
+    expect(result.justSwitchedLane).toBe(true);
+    expect(result.aiBotChatId).toBeNull();
+  });
+
+  it('does not classify a bare acknowledgement — stays put', async () => {
+    const llm = makeLLMMock('SOCIAL');
+    const result = await makeIntentClassifierNode(llm)(inLaneState('thanks', 2));
+    expect(result.selectedOption).toBe(2);
+    expect(result.justSwitchedLane).toBe(false);
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
+  it('stays in lane on UNCLEAR instead of dumping to the menu', async () => {
+    const llm = makeLLMMock('UNCLEAR');
+    const result = await makeIntentClassifierNode(llm)(inLaneState('idk what i even mean right now', 1));
+    expect(result.selectedOption).toBe(1);
+    expect(result.conversationPhase).toBe('option');
+    expect(result.pendingResponse).toBeUndefined();
+  });
+
+  it('stays in lane when the classifier LLM throws', async () => {
+    const llm = { chat: jest.fn().mockRejectedValue(new Error('down')) };
+    const result = await makeIntentClassifierNode(llm)(inLaneState('a substantive message here', 2));
+    expect(result.selectedOption).toBe(2);
+    expect(result.conversationPhase).toBe('option');
+  });
+
+  it('routes to crisis on a phrase match even mid-lane, without the LLM', async () => {
+    const llm = makeLLMMock('TALK');
+    const result = await makeIntentClassifierNode(llm)(inLaneState('i want to kill myself', 1));
+    expect(result.conversationPhase).toBe('crisis');
+    expect(result.crisisDetected).toBe(true);
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
+  it('switches on a whole-message numeric selection mid-lane', async () => {
+    const llm = makeLLMMock('TALK');
+    const result = await makeIntentClassifierNode(llm)(inLaneState('2', 1));
+    expect(result.selectedOption).toBe(2);
+    expect(result.justSwitchedLane).toBe(true);
+    expect(result.aiBotChatId).toBeNull();
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
+  it('feeds recent conversation context to the classifier during re-eval', async () => {
+    const llm = makeLLMMock('TALK');
+    await makeIntentClassifierNode(llm)(inLaneState('tell me more about that', 1));
+    const historyArg = llm.chat.mock.calls[0][3];
+    expect(Array.isArray(historyArg)).toBe(true);
   });
 });

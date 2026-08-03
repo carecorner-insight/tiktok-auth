@@ -17,15 +17,33 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: IT
     const userText = getLastUserInput(state);
     const isInitialSelection = /^[.\s]*[3][.\s]*$/.test(userText);
 
-    if (isInitialSelection) {
+    // Static resource block — the counselling URL must be exact, so we never let
+    // the LLM reproduce it. Used for the initial selection and for a seamless
+    // mid-conversation switch into this lane (with a brief bridging line).
+    const RESOURCE_BLOCK =
+      `📅 Book a counselling session: ${COUNSELLING_URL}\n\n` +
+      `You can also reach out to someone you trust, or contact a crisis line if you need immediate support.\n\n` +
+      `Feel free to keep chatting, or type *menu* to see other support options.`;
+
+    if (state.justSwitchedLane) {
       return {
         pendingResponse:
-          `Here are some resources that may help:\n\n` +
-          `📅 Book a counselling session: ${COUNSELLING_URL}\n\n` +
-          `You can also reach out to someone you trust, or contact a crisis line if you need immediate support.\n\n` +
-          `Feel free to keep chatting, or type *menu* to see other support options.`,
+          `It sounds like connecting with real support could really help. ` +
+          `Here are some ways to reach the Care Corner team:\n\n` +
+          RESOURCE_BLOCK,
         conversationPhase: 'option',
         selectedOption: 3,
+        justSwitchedLane: false,
+        aiBotChatId: null,
+      };
+    }
+
+    if (isInitialSelection) {
+      return {
+        pendingResponse: `Here are some resources that may help:\n\n` + RESOURCE_BLOCK,
+        conversationPhase: 'option',
+        selectedOption: 3,
+        justSwitchedLane: false,
       };
     }
 
@@ -52,6 +70,7 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: IT
         pendingResponse: reply,
         conversationPhase: isCrisis ? 'crisis' : 'option',
         selectedOption: 3,
+        justSwitchedLane: false,
         ...(isCrisis && { crisisDetected: true }),
       };
     } finally {

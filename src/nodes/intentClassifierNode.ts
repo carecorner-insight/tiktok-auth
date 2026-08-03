@@ -7,24 +7,32 @@ import { containsCrisisPhrase } from '../lib/crisisDetection';
 
 // ── Intent classifier — replaces the numeric-only optionRouter ───────────────
 //
-// The post-screener prompt is now open-ended ("What brings you here today?"),
-// so this node routes free text as well as the legacy 1/2/3 replies:
+// Runs in two situations:
 //
+//  A. INITIAL SELECTION (conversationPhase === 'menu') — the user has just been
+//     asked the open-ended entry question and we pick their lane.
+//  B. RE-EVALUATION (conversationPhase === 'option', intent mode only) — the
+//     router sends EVERY in-lane turn back here so the bot can seamlessly switch
+//     lanes mid-conversation (e.g. Talk → Social Coach). Here the default is to
+//     STAY in the current lane; we only switch on a confident, different intent,
+//     and we NEVER fall back to the menu (that would derail a live conversation).
+//
+// Routing outcomes (both situations):
 //   1. Numeric reply 1/2/3        → mapped directly (backward compatible; also
 //                                    used by the re-engagement nudge menu).
 //   2. Local crisis keyword check → phase 'crisis' (fail-safe: never depends
 //                                    on the LLM being reachable).
 //   3. LLM classification         → TALK | SOCIAL | HUMAN | CRISIS | UNCLEAR.
-//   4. UNCLEAR or LLM failure     → fall back to the numbered menu.
+//   4. UNCLEAR / LLM failure      → initial: numbered menu; re-eval: stay put.
 //
-// The LLM client is any object with the shared chat() signature; in production
-// this is a DirectLLMClient constructed with INTENT_CLASSIFIER_PROMPT as its
-// system prompt (cheap, single-token output, no AIBots session needed).
+// On a lane SWITCH we reset aiBotChatId (each lane is a separate backend session)
+// and set justSwitchedLane so the target node bridges with prior context.
 
 export const INTENT_CLASSIFIER_PROMPT =
   `You are an intent classifier for CareyBot, a mental-health support chatbot ` +
-  `for young people aged 13-25 in Singapore. The user was just asked: ` +
-  `"What brings you here today?" and you must classify their reply.\n\n` +
+  `for young people aged 13-25 in Singapore. Based on the user's latest message ` +
+  `(and any prior conversation context provided), classify what the user needs ` +
+  `RIGHT NOW.\n\n` +
   `Labels:\n` +
   `CRISIS - any mention of suicide, self-harm, wanting to die, disappear or not ` +
   `wake up, feeling unsafe, or intent to hurt themselves or someone else. ` +
@@ -48,6 +56,15 @@ const INTENT_TO_OPTION: Record<Exclude<Intent, 'CRISIS' | 'UNCLEAR'>, MenuOption
 };
 
 const VALID_OPTIONS = new Set([1, 2, 3]);
+
+// Short acknowledgements / continuers carry no lane-switch signal. During a
+// re-evaluation we keep the user in their current lane instead of classifying
+// them (prevents a neutral "ok thanks" from flip-flopping the conversation).
+const ACK_WORDS = new Set([
+  'ok', 'okay', 'k', 'kk', 'thanks', 'thank you', 'thx', 'ty', 'yeah', 'yea', 'yes',
+  'yep', 'yup', 'sure', 'cool', 'alright', 'right', 'got it', 'mm', 'mmm', 'mhm',
+  'hmm', 'nice', 'great', 'i see', 'ic', 'oh', 'ah', 'haha', 'lol',
+]);
 
 // containsCrisisPhrase + the phrase list now live in ../lib/crisisDetection so
 // the router can share the same deterministic backstop on every turn.
@@ -78,73 +95,101 @@ export function parseIntentReply(raw: string): Intent | null {
 export function makeIntentClassifierNode(intentLLM: IIntentLLM, mode: MenuMode = 'intent') {
   return async function intentClassifierNode(state: CareyBotState): Promise<NodeResult> {
     const normalized = getLastUserInput(state);
+    const current = state.selectedOption;
+    // Re-evaluation of an in-lane turn (intent mode) vs. the initial menu pick.
+    const isReeval = state.conversationPhase === 'option' && current != null;
 
-    // 1 ── Numeric selection — works in BOTH modes (the numbered menu, and the
-    //      legacy/nudge menu in intent mode).
-    const parsed = parseInt(normalized.replace(/[.\s]/g, ''), 10);
-    if (VALID_OPTIONS.has(parsed)) {
-      return {
-        selectedOption: parsed as MenuOption,
-        conversationPhase: 'option',
-      };
-    }
+    // Route into a lane, distinguishing "stay" (keep the backend session) from a
+    // "switch" (fresh session + bridge with prior context).
+    const goToLane = (target: MenuOption): NodeResult => {
+      if (isReeval && target === current) {
+        return { selectedOption: target, conversationPhase: 'option', justSwitchedLane: false };
+      }
+      if (isReeval) {
+        // Mid-conversation switch to a different lane.
+        console.log(`[intent] switching lane ${current} → ${target}`);
+        return {
+          selectedOption: target,
+          conversationPhase: 'option',
+          aiBotChatId: null,
+          justSwitchedLane: true,
+          pendingHandoff: null,
+        };
+      }
+      // Initial selection from the menu.
+      return { selectedOption: target, conversationPhase: 'option', justSwitchedLane: false };
+    };
 
-    // 2 ── Local crisis pre-check — runs in BOTH modes so a disclosure typed
-    //      instead of a menu number is never missed. Never depends on the LLM.
-    if (containsCrisisPhrase(normalized)) {
-      console.log('[intent] local crisis phrase matched → crisis');
-      return {
-        crisisDetected: true,
-        conversationPhase: 'crisis',
-        selectedOption: null,
-      };
-    }
+    const stay = (): NodeResult => goToLane(current as MenuOption);
 
-    // 3 ── NUMBERED mode: no LLM classification — anything that isn't a valid
-    //      number (or a crisis disclosure) just re-presents the numbered menu.
-    if (mode === 'numbered') {
-      return { selectedOption: null, pendingResponse: FALLBACK_TEXT, conversationPhase: 'menu' };
-    }
+    const toCrisis = (): NodeResult => ({
+      crisisDetected: true,
+      conversationPhase: 'crisis',
+      selectedOption: null,
+    });
 
-    // Nothing classifiable (empty after normalisation) → re-present menu.
-    if (!normalized) {
-      return { selectedOption: null, pendingResponse: FALLBACK_TEXT, conversationPhase: 'menu' };
-    }
-
-    // 3 ── LLM classification of the RAW user text (normalisation strips
-    //      signal the model can use, e.g. "???", emoji, casing).
-    const rawText =
-      [...state.messages].reverse().find(m => m.role === 'user')?.content ?? normalized;
-
-    let intent: Intent | null = null;
-    try {
-      const result = await intentLLM.chat(null, rawText);
-      intent = parseIntentReply(result.reply);
-      console.log(`[intent] llm reply="${result.reply.slice(0, 40)}" → ${intent}`);
-    } catch (err) {
-      console.error('[intent] classifier LLM failed — falling back to menu', err);
-    }
-
-    if (intent === 'CRISIS') {
-      return {
-        crisisDetected: true,
-        conversationPhase: 'crisis',
-        selectedOption: null,
-      };
-    }
-
-    if (intent && intent !== 'UNCLEAR') {
-      return {
-        selectedOption: INTENT_TO_OPTION[intent],
-        conversationPhase: 'option',
-      };
-    }
-
-    // 4 ── UNCLEAR or LLM failure → numbered menu as the safety net.
-    return {
+    const toMenu = (): NodeResult => ({
       selectedOption: null,
       pendingResponse: FALLBACK_TEXT,
       conversationPhase: 'menu',
-    };
+      justSwitchedLane: false,
+    });
+
+    // 1 ── Whole-message numeric selection (exactly "1"/"2"/"3"). A message that
+    //      merely *starts* with a digit ("3 times this week") is NOT a selection.
+    const digits = normalized.replace(/[.\s]/g, '');
+    if (/^[123]$/.test(digits)) {
+      return goToLane(Number(digits) as MenuOption);
+    }
+
+    // 2 ── Local crisis pre-check — runs in ALL modes/situations. Never the LLM.
+    if (containsCrisisPhrase(normalized)) {
+      console.log('[intent] local crisis phrase matched → crisis');
+      return toCrisis();
+    }
+
+    // 3 ── NUMBERED mode: no LLM classification. (In numbered mode the router
+    //      never sends in-lane turns here, so this is only the initial menu pick;
+    //      anything that isn't a valid number re-presents the numbered menu.)
+    if (mode === 'numbered') {
+      return isReeval ? stay() : toMenu();
+    }
+
+    // 4 ── Nothing to classify.
+    if (!normalized) {
+      return isReeval ? stay() : toMenu();
+    }
+
+    // 5 ── Bare acknowledgement during a re-eval → keep the lane, skip the LLM.
+    if (isReeval && ACK_WORDS.has(normalized)) {
+      return stay();
+    }
+
+    // 6 ── LLM classification of the RAW user text (normalisation strips signal
+    //      the model can use, e.g. "???", emoji, casing). During a re-eval we
+    //      also give it recent context so it judges the conversation, not one line.
+    const rawText =
+      [...state.messages].reverse().find(m => m.role === 'user')?.content ?? normalized;
+    const historyForClassify = isReeval
+      ? state.messages.slice(Math.max(0, state.messages.length - 7), state.messages.length - 1)
+      : undefined;
+
+    let intent: Intent | null = null;
+    try {
+      const result = await intentLLM.chat(null, rawText, undefined, historyForClassify);
+      intent = parseIntentReply(result.reply);
+      console.log(`[intent] llm reply="${result.reply.slice(0, 40)}" → ${intent} (reeval=${isReeval})`);
+    } catch (err) {
+      console.error('[intent] classifier LLM failed', err);
+    }
+
+    if (intent === 'CRISIS') return toCrisis();
+
+    if (intent && intent !== 'UNCLEAR') {
+      return goToLane(INTENT_TO_OPTION[intent]);
+    }
+
+    // 7 ── UNCLEAR or LLM failure → initial: numbered menu; re-eval: stay put.
+    return isReeval ? stay() : toMenu();
   };
 }
