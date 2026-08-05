@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CareyBot — Reply Review</title>
+  <style>
+    :root {
+      --bg: #0f1419; --panel: #1a2029; --border: #2a3340; --text: #e6edf3;
+      --muted: #8b98a5; --user: #58a6ff; --bot: #3fb950;
+      --pass: #3fb950; --fail: #f85149; --warn: #d29922; --neutral: #6e7681;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text); font-size: 14px; }
+    header { position: sticky; top: 0; z-index: 10; background: var(--panel);
+      border-bottom: 1px solid var(--border); padding: 12px 20px;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    .nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 6px;
+      border: 1px solid var(--border); font-size: 13px; }
+    .nav a.active { color: var(--text); border-color: var(--user); }
+    .spacer { margin-left: auto; }
+    button { background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+    button:hover { border-color: var(--user); }
+    main { padding: 20px; max-width: 900px; margin: 0 auto; }
+    .muted { color: var(--muted); }
+    .mono { font-family: ui-monospace, Menlo, monospace; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 16px; margin-bottom: 16px; }
+    .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--muted); margin: 0 0 10px; border: none; padding: 0; }
+    .bubble { margin: 6px 0; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
+      padding: 8px 12px; border-radius: 10px; max-width: 85%; }
+    .bubble.youth { background: #1f3a5f; margin-left: auto; }
+    .bubble.carey { background: #143a22; }
+    .reply { background: #143a22; border: 2px solid var(--bot); border-radius: 10px;
+      padding: 14px 16px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+      font-size: 15px; }
+    .dim { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .dim:last-child { border-bottom: none; }
+    .dim .label { font-weight: 600; }
+    .dim .q { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .opts { display: flex; gap: 6px; }
+    .opt { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--bg); cursor: pointer; font-size: 13px; }
+    .opt.sel[data-v="pass"], .opt.sel[data-v="good"] { background: var(--pass); color: #04260f; border-color: var(--pass); font-weight: 700; }
+    .opt.sel[data-v="fail"], .opt.sel[data-v="bad"] { background: var(--fail); color: #2a0608; border-color: var(--fail); font-weight: 700; }
+    .opt.sel[data-v="na"] { background: var(--neutral); color: #fff; border-color: var(--neutral); font-weight: 700; }
+    .opt.sel[data-v="borderline"] { background: var(--warn); color: #2a1d00; border-color: var(--warn); font-weight: 700; }
+    .proposal { font-size: 12px; color: var(--muted); margin-left: 8px; }
+    textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px; font-family: inherit; font-size: 13px; resize: vertical; min-height: 64px; }
+    .actions { display: flex; gap: 10px; align-items: center; }
+    .actions .primary { background: var(--user); color: #04101f; border: none; font-weight: 700; padding: 10px 20px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+    .pill.crit { background: var(--fail); color: #2a0608; }
+    .gate { max-width: 420px; margin: 80px auto; background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 28px; }
+    .gate input { width: 100%; margin: 12px 0; padding: 10px; background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; }
+    .gate button { width: 100%; background: var(--user); color: #04101f; border: none; font-weight: 600; padding: 10px; }
+    .hidden { display: none; }
+    kbd { background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+      padding: 1px 5px; font-size: 11px; font-family: ui-monospace, monospace; }
+    .toggle { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="gate" class="gate">
+    <h2 style="color:var(--text);margin-top:0">Reply Review</h2>
+    <p class="muted">Enter your personal reviewer token.</p>
+    <input id="tokenInput" type="password" placeholder="Reviewer token" />
+    <button id="tokenBtn">Start reviewing</button>
+    <p id="gateErr" style="color:var(--fail);min-height:18px"></p>
+  </div>
+
+  <div id="app" class="hidden">
+    <header>
+      <h1>CareyBot — Reply Review</h1>
+      <nav class="nav">
+        <a id="navLog" href="#">Live Log</a>
+        <a id="navEval" href="#">Eval Dashboard</a>
+        <a class="active" href="#">Review</a>
+        <a id="navAgreement" href="label-dashboard.html">Agreement</a>
+      </nav>
+      <div class="spacer"></div>
+      <label class="toggle muted"><input type="checkbox" id="blindToggle" /> Blind mode</label>
+      <span id="progress" class="muted"></span>
+    </header>
+    <main id="main"><p class="muted">Loading…</p></main>
+  </div>
+
+  <script>
+    (function () {
+      var token = sessionStorage.getItem('labelToken') || '';
+      var queue = [], rubric = [], idx = 0, current = null, verdicts = {}, stats = {}, judgeVersion = '';
+      var blind = localStorage.getItem('labelBlind') === '1';
+
+      var OVERALL = ['good', 'borderline', 'bad'];
+      var DIMV = ['pass', 'fail', 'na'];
+
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+      function el(id) { return document.getElementById(id); }
+
+      function load() {
+        fetch('/api/label-queue?limit=50', { headers: { 'x-labeler-token': token }, cache: 'no-store' })
+          .then(function (r) {
+            if (r.status === 401) throw new Error('unauthorized');
+            if (!r.ok) throw new Error('http ' + r.status);
+            return r.json();
+          })
+          .then(function (d) {
+            sessionStorage.setItem('labelToken', token);
+            el('gate').classList.add('hidden'); el('app').classList.remove('hidden');
+            el('navLog').href = 'uat-logs.html'; el('navEval').href = 'eval-dashboard.html';
+            queue = d.queue || []; rubric = d.rubric || []; stats = d.stats || {};
+            judgeVersion = d.judgeVersion || '';
+            el('blindToggle').checked = blind;
+            idx = 0; render();
+          })
+          .catch(function (e) {
+            if (e.message === 'unauthorized') { showGate('Token not recognised.'); return; }
+            el('main').innerHTML = '<p style="color:var(--fail)">Error: ' + esc(e.message) + '</p>';
+          });
+      }
+
+      function render() {
+        var m = el('main');
+        if (idx >= queue.length) {
+          m.innerHTML = '<div class="card"><h2>All done</h2><p>No more replies in your queue.</p>' +
+            '<p class="muted">You have labelled ' + (stats.labelledByMe || 0) + ' of ' + (stats.corpus || 0) +
+            ' replies in the corpus. Run the judge script to ingest more.</p>' +
+            '<button onclick="location.reload()">Reload queue</button></div>';
+          el('progress').textContent = '';
+          return;
+        }
+        current = queue[idx];
+        // Pre-fill from the judge's proposal unless blind mode is on.
+        verdicts = {};
+        if (!blind && current.llm) {
+          rubric.forEach(function (d) { verdicts[d.key] = current.llm[d.key]; });
+          verdicts.overall = current.llm.overall;
+        }
+
+        el('progress').textContent = (idx + 1) + ' / ' + queue.length + ' · judge ' + judgeVersion;
+
+        var ctx = (current.context || []).map(function (t) {
+          return '<div class="bubble ' + (t.role === 'youth' ? 'youth' : 'carey') + '"><b>' +
+            (t.role === 'youth' ? 'User' : 'Carey') + '</b><br>' + esc(t.text) + '</div>';
+        }).join('') || '<p class="muted">(start of conversation)</p>';
+
+        var dims = rubric.map(function (d) {
+          return '<div class="dim"><div><span class="label">' + esc(d.label) + '</span>' +
+            (d.critical ? ' <span class="pill crit">critical</span>' : '') +
+            '<div class="q">' + esc(d.question) + '</div>' +
+            '<div class="q" style="margin-top:4px">' + esc(d.guidance) + '</div></div>' +
+            '<div class="opts" data-dim="' + esc(d.key) + '">' +
+              DIMV.map(function (v) { return '<button class="opt" data-v="' + v + '">' + v + '</button>'; }).join('') +
+            '</div></div>';
+        }).join('');
+
+        var proposal = (!blind && current.llm)
+          ? '<div class="card"><h2>Judge proposal <span class="muted" style="text-transform:none">(' + esc(judgeVersion) + ')</span></h2>' +
+            '<p class="mono">overall: <b>' + esc(current.llm.overall) + '</b></p>' +
+            '<p class="muted">' + esc(current.llm.rationale) + '</p>' +
+            '<p class="muted" style="font-size:12px">Pre-filled below — change anything you disagree with. Your override is the signal we tune the judge on.</p></div>'
+          : (current.llm ? '<div class="card muted">Blind mode — judge proposal hidden.</div>'
+                         : '<div class="card muted">No judge proposal for this reply.</div>');
+
+        m.innerHTML =
+          '<div class="card"><h2>Context</h2>' + ctx + '</div>' +
+          '<div class="card"><h2>Carey\'s reply — judge this</h2><div class="reply">' + esc(current.reply) + '</div>' +
+          '<p class="muted" style="margin-bottom:0;font-size:12px">' +
+            esc(current.persona || '') + (current.menuMode ? ' · ' + esc(current.menuMode) : '') +
+            (current.phase ? ' · ' + esc(current.phase) : '') + '</p></div>' +
+          proposal +
+          '<div class="card"><h2>Rubric</h2>' + dims +
+            '<div class="dim"><div><span class="label">Overall verdict</span>' +
+              '<div class="q">Would you ship this reply as-is?</div></div>' +
+              '<div class="opts" data-dim="overall">' +
+                OVERALL.map(function (v, i) { return '<button class="opt" data-v="' + v + '">' + (i+1) + '. ' + v + '</button>'; }).join('') +
+              '</div></div>' +
+          '</div>' +
+          '<div class="card"><h2>Why? (required for anything not "good")</h2>' +
+            '<textarea id="rationale" placeholder="Name the decisive evidence — this becomes the judge prompt\'s few-shot material."></textarea></div>' +
+          '<div class="card actions">' +
+            '<button class="primary" id="saveBtn">Save &amp; next</button>' +
+            '<button id="skipBtn">Skip</button>' +
+            '<span class="muted" style="font-size:12px">' +
+              '<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> overall · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> save</span>' +
+            '<span class="spacer"></span><span id="err" style="color:var(--fail)"></span>' +
+          '</div>';
+
+        paint();
+        m.querySelectorAll('.opts').forEach(function (group) {
+          group.querySelectorAll('.opt').forEach(function (b) {
+            b.addEventListener('click', function () {
+              verdicts[group.getAttribute('data-dim')] = b.getAttribute('data-v');
+              paint();
+            });
+          });
+        });
+        el('saveBtn').addEventListener('click', save);
+        el('skipBtn').addEventListener('click', function () { idx++; render(); });
+      }
+
+      function paint() {
+        document.querySelectorAll('.opts').forEach(function (group) {
+          var dim = group.getAttribute('data-dim');
+          group.querySelectorAll('.opt').forEach(function (b) {
+            b.classList.toggle('sel', verdicts[dim] === b.getAttribute('data-v'));
+          });
+        });
+      }
+
+      function save() {
+        var missing = rubric.filter(function (d) { return !verdicts[d.key]; }).map(function (d) { return d.label; });
+        if (!verdicts.overall) missing.push('Overall');
+        if (missing.length) { el('err').textContent = 'Missing: ' + missing.join(', '); return; }
+        var rationale = (el('rationale').value || '').trim();
+        if (verdicts.overall !== 'good' && !rationale) {
+          el('err').textContent = 'Please say why this is not "good".'; return;
+        }
+        el('err').textContent = '';
+        el('saveBtn').disabled = true;
+
+        var body = { replyKey: current.replyKey, rationale: rationale };
+        rubric.forEach(function (d) { body[d.key] = verdicts[d.key]; });
+        body.overall = verdicts.overall;
+
+        fetch('/api/labels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-labeler-token': token },
+          body: JSON.stringify(body),
+        })
+          .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+          .then(function () {
+            stats.labelledByMe = (stats.labelledByMe || 0) + 1;
+            el('saveBtn').disabled = false; idx++; render();
+          })
+          .catch(function (e) {
+            el('saveBtn').disabled = false;
+            el('err').textContent = 'Save failed: ' + e.message;
+          });
+      }
+
+      document.addEventListener('keydown', function (ev) {
+        if (el('app').classList.contains('hidden')) return;
+        var typing = ev.target && ev.target.tagName === 'TEXTAREA';
+        if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); save(); return; }
+        if (typing) return;
+        if (ev.key === '1' || ev.key === '2' || ev.key === '3') {
+          verdicts.overall = OVERALL[Number(ev.key) - 1]; paint();
+        }
+      });
+
+      el('blindToggle') && el('blindToggle').addEventListener('change', function (e) {
+        blind = e.target.checked;
+        localStorage.setItem('labelBlind', blind ? '1' : '0');
+        render();
+      });
+
+      function showGate(msg) {
+        el('gate').classList.remove('hidden'); el('app').classList.add('hidden');
+        el('gateErr').textContent = msg || '';
+      }
+      el('tokenBtn').addEventListener('click', function () {
+        token = el('tokenInput').value.trim();
+        if (token) load();
+      });
+      el('tokenInput').addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') el('tokenBtn').click();
+      });
+
+      if (token) load(); else showGate('');
+    })();
+  </script>
+</body>
+</html>

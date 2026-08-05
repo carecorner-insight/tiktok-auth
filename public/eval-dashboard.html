@@ -94,6 +94,7 @@
       <nav class="nav">
         <a id="navLog" href="#">Live Log</a>
         <a class="active" href="#">Eval Dashboard</a>
+        <a id="navAgreement" href="#">Agreement</a>
       </nav>
       <div class="spacer"></div>
       <span id="status" class="muted"></span>
@@ -303,6 +304,7 @@
       function start() {
         app.classList.remove('hidden'); gate.classList.add('hidden');
         document.getElementById('navLog').href = 'uat-logs.html?token=' + encodeURIComponent(token);
+        document.getElementById('navAgreement').href = 'label-dashboard.html?token=' + encodeURIComponent(token);
         document.getElementById('refreshBtn').addEventListener('click', load);
         load();
       }

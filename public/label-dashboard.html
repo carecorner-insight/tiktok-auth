@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CareyBot — Judge Agreement</title>
+  <style>
+    :root {
+      --bg: #0f1419; --panel: #1a2029; --border: #2a3340; --text: #e6edf3;
+      --muted: #8b98a5; --user: #58a6ff;
+      --pass: #3fb950; --fail: #f85149; --warn: #d29922; --neutral: #6e7681;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text); font-size: 14px; }
+    header { position: sticky; top: 0; z-index: 10; background: var(--panel);
+      border-bottom: 1px solid var(--border); padding: 12px 20px;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    .nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 6px;
+      border: 1px solid var(--border); font-size: 13px; }
+    .nav a.active { color: var(--text); border-color: var(--user); }
+    .nav a:hover { border-color: var(--user); }
+    .spacer { margin-left: auto; }
+    button { background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+    button:hover { border-color: var(--user); }
+    main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+    .muted { color: var(--muted); }
+    .mono { font-family: ui-monospace, Menlo, monospace; }
+    h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+      border-bottom: 1px solid var(--border); padding-bottom: 6px; margin: 28px 0 14px; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px,1fr)); gap: 12px; }
+    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+    .kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .kpi .value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+    .kpi .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .verdict { font-size: 12px; font-weight: 700; margin-top: 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; }
+    .grid td, .grid th { text-align: center; }
+    .grid td.rowhead, .grid th.rowhead { text-align: left; color: var(--muted); }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+    .pill.good { background: var(--pass); color: #04260f; }
+    .pill.borderline { background: var(--warn); color: #2a1d00; }
+    .pill.bad { background: var(--fail); color: #2a0608; }
+    .pill.crit { background: var(--fail); color: #2a0608; }
+    .pill.pass { background: var(--pass); color: #04260f; }
+    .pill.fail { background: var(--fail); color: #2a0608; }
+    .pill.na { background: var(--neutral); color: #fff; }
+    .diag { background: #20283480; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+    .note { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+    .bar { height: 8px; border-radius: 4px; background: #20283480; overflow: hidden; display: flex; }
+    .bar span { display: block; height: 100%; }
+    .gate { max-width: 420px; margin: 80px auto; background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 28px; }
+    .gate input { width: 100%; margin: 12px 0; padding: 10px; background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; }
+    .gate button { width: 100%; background: var(--user); color: #04101f; border: none; font-weight: 600; padding: 10px; }
+    .hidden { display: none; }
+    .reply { white-space: pre-wrap; word-break: break-word; max-width: 460px; }
+  </style>
+</head>
+<body>
+  <div id="gate" class="gate hidden">
+    <h2 style="border:none;color:var(--text)">Judge Agreement</h2>
+    <p class="muted">Enter the access token.</p>
+    <input id="tokenInput" type="password" placeholder="Access token" />
+    <button id="tokenBtn">View dashboard</button>
+    <p id="gateErr" style="color:var(--fail);min-height:18px"></p>
+  </div>
+
+  <div id="app" class="hidden">
+    <header>
+      <h1>CareyBot — Judge Agreement</h1>
+      <nav class="nav">
+        <a id="navLog" href="#">Live Log</a>
+        <a id="navEval" href="#">Eval Dashboard</a>
+        <a id="navReview" href="#">Review</a>
+        <a class="active" href="#">Agreement</a>
+      </nav>
+      <div class="spacer"></div>
+      <span id="status" class="muted"></span>
+      <button id="csvBtn">Export CSV</button>
+      <button id="refreshBtn">Refresh</button>
+    </header>
+    <main id="main"><p class="muted">Loading…</p></main>
+  </div>
+
+  <script>
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var token = params.get('token') || '';
+
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+      function el(id) { return document.getElementById(id); }
+      function num(v, suffix) { return v === null || v === undefined ? '—' : v + (suffix || ''); }
+
+      // Landis & Koch benchmarks — the standard reading of kappa.
+      function kappaVerdict(k) {
+        if (k === null || k === undefined) return { text: 'not enough data', color: 'var(--muted)' };
+        if (k < 0.2)  return { text: 'poor — do not auto-label', color: 'var(--fail)' };
+        if (k < 0.41) return { text: 'fair — not usable yet', color: 'var(--fail)' };
+        if (k < 0.61) return { text: 'moderate — keep reviewing', color: 'var(--warn)' };
+        if (k < 0.81) return { text: 'substantial — usable with spot checks', color: 'var(--pass)' };
+        return { text: 'near-perfect', color: 'var(--pass)' };
+      }
+
+      function render(d) {
+        var r = d.report, t = r.totals, o = r.overall;
+        var kv = kappaVerdict(o.kappa);
+
+        var kpis = [
+          { label: "Cohen's κ (overall)", value: num(o.kappa), sub: 'n = ' + o.n,
+            verdict: kv.text, color: kv.color },
+          { label: 'Raw agreement', value: num(o.agreementPct, '%'),
+            sub: 'κ is the number that matters' },
+          { label: 'Labels', value: t.labels, sub: t.uniqueReplies + ' replies · ' + t.labelers + ' reviewer(s)' },
+          { label: 'Corpus reviewed', value: (d.corpusSize ? Math.round(t.uniqueReplies / d.corpusSize * 100) : 0) + '%',
+            sub: t.uniqueReplies + ' of ' + d.corpusSize },
+          { label: 'Inter-rater κ', value: num(r.interRater.kappa),
+            sub: r.interRater.comparisons + ' overlapping comparison(s)' },
+        ];
+
+        var kpiHtml = kpis.map(function (k) {
+          return '<div class="kpi"><div class="label">' + k.label + '</div>' +
+            '<div class="value">' + k.value + '</div>' +
+            '<div class="sub">' + esc(k.sub) + '</div>' +
+            (k.verdict ? '<div class="verdict" style="color:' + k.color + '">' + esc(k.verdict) + '</div>' : '') +
+          '</div>';
+        }).join('');
+
+        // ── confusion matrix ──
+        var cats = o.categories;
+        var mHead = '<tr><th class="rowhead">human ↓ / judge →</th>' +
+          cats.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '<th>total</th></tr>';
+        var mBody = cats.map(function (c, i) {
+          var row = o.matrix[i] || [];
+          var tot = row.reduce(function (a, b) { return a + b; }, 0);
+          return '<tr><td class="rowhead"><span class="pill ' + esc(c) + '">' + esc(c) + '</span></td>' +
+            row.map(function (v, j) {
+              return '<td class="' + (i === j ? '' : (v ? 'diag' : '')) + '">' + v + '</td>';
+            }).join('') + '<td class="muted">' + tot + '</td></tr>';
+        }).join('');
+
+        // ── bias bar ──
+        var b = r.bias, bTot = b.tooLenient + b.tooStrict + b.exact;
+        var barHtml = bTot ? '<div class="bar">' +
+          '<span style="width:' + (b.tooLenient / bTot * 100) + '%;background:var(--fail)"></span>' +
+          '<span style="width:' + (b.exact / bTot * 100) + '%;background:var(--pass)"></span>' +
+          '<span style="width:' + (b.tooStrict / bTot * 100) + '%;background:var(--warn)"></span>' +
+          '</div><p class="note">' +
+          '<b style="color:var(--fail)">' + b.tooLenient + '</b> too lenient (judge rated better than the human) · ' +
+          '<b style="color:var(--pass)">' + b.exact + '</b> exact · ' +
+          '<b style="color:var(--warn)">' + b.tooStrict + '</b> too strict. ' +
+          'Leniency is the dangerous direction — it means the judge waves through replies a human would reject.</p>'
+          : '<p class="muted">No judged labels yet.</p>';
+
+        // ── per-dimension ──
+        var dimRows = r.dimensions.map(function (dim) {
+          var v = kappaVerdict(dim.kappa);
+          return '<tr><td>' + esc(dim.label) + (dim.critical ? ' <span class="pill crit">critical</span>' : '') + '</td>' +
+            '<td class="mono">' + num(dim.kappa) + '</td>' +
+            '<td>' + num(dim.agreementPct, '%') + '</td>' +
+            '<td style="color:' + v.color + '">' + esc(v.text) + '</td>' +
+            '<td class="muted">' + dim.n + '</td></tr>';
+        }).join('');
+
+        // ── per judge version ──
+        var verRows = r.byVersion.length ? r.byVersion.map(function (v) {
+          return '<tr><td class="mono">' + esc(v.version) + '</td><td class="mono">' + num(v.kappa) + '</td>' +
+            '<td>' + num(v.agreementPct, '%') + '</td><td class="muted">' + v.n + '</td></tr>';
+        }).join('') : '<tr><td colspan="4" class="muted">No judged labels yet.</td></tr>';
+
+        function disagreementTable(rows, emptyMsg) {
+          if (!rows.length) return '<p class="muted">' + emptyMsg + '</p>';
+          return '<table><tr><th>Reply</th><th>Human</th><th>Judge</th><th>Why (human)</th><th>Reviewer</th></tr>' +
+            rows.map(function (x) {
+              return '<tr><td class="reply">' + esc((x.replyText || '').slice(0, 220)) +
+                  '<div class="muted mono" style="font-size:11px">' + esc(x.persona || '') +
+                  (x.phase ? ' · ' + esc(x.phase) : '') + '</div></td>' +
+                '<td><span class="pill ' + esc(x.human.overall) + '">' + esc(x.human.overall) + '</span></td>' +
+                '<td>' + (x.llm ? '<span class="pill ' + esc(x.llm.overall) + '">' + esc(x.llm.overall) + '</span>' : '—') + '</td>' +
+                '<td class="muted">' + esc(x.rationale || '') + '</td>' +
+                '<td class="muted">' + esc(x.labelerName || '') + '</td></tr>';
+            }).join('') + '</table>';
+        }
+
+        el('main').innerHTML =
+          '<div class="kpis">' + kpiHtml + '</div>' +
+          '<div class="card note" style="margin-top:16px">' +
+            '<b>How to read this:</b> raw agreement is inflated when most replies land in one category — ' +
+            'a judge that always says “good” can score 80% agreement and still be useless. Cohen\'s κ corrects ' +
+            'for that. Do not let the judge label unreviewed data below κ ≈ 0.6, and never on the ' +
+            '<b>safety</b> dimension.' +
+          '</div>' +
+
+          '<h2>Overall verdict — human vs judge</h2>' +
+          '<table class="grid">' + mHead + mBody + '</table>' +
+          '<p class="note">Off-diagonal cells are disagreements. The top-right corner (human said <b>bad</b>, ' +
+          'judge said <b>good</b>) is the cell to watch.</p>' +
+
+          '<h2>Judge bias direction</h2>' + barHtml +
+
+          '<h2>Per-dimension agreement</h2>' +
+          '<table><tr><th>Dimension</th><th>κ</th><th>Agreement</th><th>Reading</th><th>n</th></tr>' + dimRows + '</table>' +
+
+          '<h2>Judge accuracy by prompt version</h2>' +
+          '<table><tr><th>Version</th><th>κ</th><th>Agreement</th><th>n</th></tr>' + verRows + '</table>' +
+          '<p class="note">Bump <span class="mono">JUDGE_VERSION</span> whenever the rubric changes, so this ' +
+          'table shows whether a prompt edit actually improved the judge.</p>' +
+
+          '<h2>⚠ Critical misses <span class="muted" style="text-transform:none;font-weight:400">' +
+            '(judge passed a safety/boundaries check a human failed)</span></h2>' +
+          disagreementTable(r.criticalMisses, 'None — no critical dimension was passed by the judge and failed by a human.') +
+
+          '<h2>All disagreements <span class="muted" style="text-transform:none;font-weight:400">' +
+            '(newest first — this is your few-shot material)</span></h2>' +
+          disagreementTable(r.disagreements, 'No disagreements recorded yet.');
+
+        el('status').textContent = t.labels + ' labels · ' + t.labelers + ' reviewer(s)';
+      }
+
+      function load() {
+        el('status').textContent = 'loading…';
+        fetch('/api/label-stats?token=' + encodeURIComponent(token), { cache: 'no-store' })
+          .then(function (r) {
+            if (r.status === 401) throw new Error('unauthorized');
+            if (!r.ok) throw new Error('http ' + r.status);
+            return r.json();
+          })
+          .then(render)
+          .catch(function (e) {
+            if (e.message === 'unauthorized') { showGate('Invalid or expired token.'); return; }
+            el('status').textContent = 'error: ' + e.message;
+          });
+      }
+
+      function start() {
+        el('app').classList.remove('hidden'); el('gate').classList.add('hidden');
+        var q = '?token=' + encodeURIComponent(token);
+        el('navLog').href = 'uat-logs.html' + q;
+        el('navEval').href = 'eval-dashboard.html' + q;
+        el('navReview').href = 'label.html';
+        el('refreshBtn').addEventListener('click', load);
+        el('csvBtn').addEventListener('click', function () {
+          window.open('/api/labels?format=csv&token=' + encodeURIComponent(token), '_blank');
+        });
+        load();
+      }
+
+      function showGate(msg) {
+        el('gate').classList.remove('hidden'); el('app').classList.add('hidden');
+        el('gateErr').textContent = msg || '';
+        el('tokenBtn').onclick = function () {
+          token = el('tokenInput').value.trim();
+          if (token) { history.replaceState(null, '', '?token=' + encodeURIComponent(token)); start(); }
+        };
+        el('tokenInput').addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter') el('tokenBtn').click();
+        });
+      }
+
+      if (token) start(); else showGate('');
+    })();
+  </script>
+</body>
+</html>
