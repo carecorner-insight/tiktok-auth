@@ -2,6 +2,8 @@ import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { getLastUserInput } from '../types/nodes';
 import { parseReplyTags } from '../lib/replyTags';
+import { scenarioMenuEnabled } from '../lib/pivotFlags';
+import { scenarioPrime } from '../config/questionnaire';
 
 // Menu option 2 → the Growing We Social Coach. This is a SEPARATE bot on the
 // AIBots/Directus platform (its own seeded system prompt), reached via a second
@@ -37,7 +39,14 @@ export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITyping
       state.pendingHandoff === 'socialCoach' || (!state.aiBotChatId && state.justSwitchedLane);
     const effectiveChatId = isBridge ? null : state.aiBotChatId;
 
-    const primeMessage = isBridge
+    // Growing We build: the menu already told us WHICH situation, so open the
+    // coach directly on that scenario instead of asking again (F6).
+    const scenarioOption =
+      scenarioMenuEnabled() && state.selectedOption ? state.selectedOption : null;
+
+    const primeMessage = scenarioOption && !state.aiBotChatId
+      ? scenarioPrime(scenarioOption)
+      : isBridge
       ? `[SYSTEM CONTEXT] The user was just talking with Carey and now wants to ` +
         `work on a social situation with you. The conversation history shows what ` +
         `they have been dealing with — acknowledge it briefly in ONE line, then go ` +
@@ -64,13 +73,18 @@ export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITyping
     const history = state.messages.slice(0, -1);
     try {
       const result = await aiBotsClient.chat(effectiveChatId, textForAI, primeMessage, history);
-      const { reply, isCrisis } = parseReplyTags(result.reply);
+      const { reply, isCrisis, suggestsReferral } = parseReplyTags(result.reply);
       return {
         aiBotChatId: result.chatId,
         pendingResponse: reply,
-        selectedOption: 2,
+        // Keep the chosen scenario in the Growing We build; the triage build
+        // only ever reaches the coach as option 2.
+        selectedOption: scenarioOption ?? state.selectedOption ?? 2,
         pendingHandoff: null,
         justSwitchedLane: false,
+        // [REFERRAL] is the pivot's only route to a human — the scenario menu
+        // has no "connect with our team" entry. Crisis still takes precedence.
+        referralRequested: !isCrisis && suggestsReferral,
         conversationPhase: isCrisis ? 'crisis' : 'option',
         ...(isCrisis && { crisisDetected: true }),
       };

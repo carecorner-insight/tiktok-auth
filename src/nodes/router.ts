@@ -2,13 +2,29 @@ import type { CareyBotState } from '../types/state';
 import { getLastUserInput } from '../types/nodes';
 import { TOTAL_QUESTIONS } from '../config/questionnaire';
 import { containsCrisisPhrase } from '../lib/crisisDetection';
+import { scenarioMenuEnabled } from '../lib/pivotFlags';
 import type { MenuMode } from '../lib/menuMode';
 
-const OPTION_NODE: Record<number, string> = {
+// Triage build: three distinct lanes.
+const TRIAGE_OPTION_NODE: Record<number, string> = {
   1: 'freeTextNode',
   2: 'socialCoachNode',
   3: 'resourceRedirectNode',
 };
+
+// Growing We build: all six menu options are SCENARIOS, so every one of them
+// feeds the social coach — the scenario just changes the prime it opens with.
+const SCENARIO_OPTION_NODE: Record<number, string> = {
+  1: 'socialCoachNode',
+  2: 'socialCoachNode',
+  3: 'socialCoachNode',
+  4: 'socialCoachNode',
+  5: 'socialCoachNode',
+  6: 'socialCoachNode',
+};
+
+const optionNodeMap = (): Record<number, string> =>
+  scenarioMenuEnabled() ? SCENARIO_OPTION_NODE : TRIAGE_OPTION_NODE;
 
 const MENU_KEYWORDS = new Set(['menu', 'back', 'back to menu', 'change', 'options']);
 const YES_WORDS = new Set(['yes', 'y', 'yeah', 'yah', 'ya', 'yup', 'sure', 'ok', 'okay', 'yes please', 'sure lah', 'can']);
@@ -38,8 +54,12 @@ export function makeRouter(mode: MenuMode = 'intent') {
 
     if (conversationPhase === 'ageCheck') {
       const lastAssistant = [...state.messages].reverse().find(m => m.role === 'assistant');
-      // The age prompt (and its re-prompt) both contain "how old are you".
-      const awaitingAnswer = lastAssistant?.content.toLowerCase().includes('how old are you') ?? false;
+      // The triage prompt (and its re-prompt) both contain "how old are you".
+      // The Growing We re-prompt deliberately does not ("just a number is fine…"),
+      // so ageAsked is what tells us we're still waiting on an answer there.
+      const awaitingAnswer =
+        state.ageAsked ||
+        (lastAssistant?.content.toLowerCase().includes('how old are you') ?? false);
       return awaitingAnswer ? 'ageGateNode' : 'ageCheckNode';
     }
 
@@ -74,7 +94,7 @@ export function makeRouter(mode: MenuMode = 'intent') {
       // Intent mode: re-classify every turn so the lane can adapt mid-conversation.
       // Numbered mode: stay in the chosen lane.
       if (mode === 'intent') return 'intentClassifierNode';
-      return OPTION_NODE[selectedOption] ?? 'intentClassifierNode';
+      return optionNodeMap()[selectedOption] ?? 'intentClassifierNode';
     }
 
     return 'sessionPersister';

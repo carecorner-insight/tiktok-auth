@@ -1,7 +1,12 @@
 import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { getLastUserInput } from '../types/nodes';
-import { CSSRS_QUESTIONS } from '../config/questionnaire';
+import {
+  CSSRS_QUESTIONS,
+  SCENARIO_MENU_TEXT,
+  AGE_REPROMPT_TEXT,
+} from '../config/questionnaire';
+import { screenerEnabled } from '../lib/pivotFlags';
 
 const OUT_OF_SCOPE_MESSAGE =
   "Thanks for letting me know.\n\n" +
@@ -17,10 +22,28 @@ export function ageGateNode(state: CareyBotState): NodeResult {
   const input = getLastUserInput(state);
   const match = input.match(/\d{1,3}/);
   const age = match ? parseInt(match[0], 10) : null;
+  const plausible = age !== null && age >= 5 && age <= 120;
+
+  // ── Growing We build (F2): a question, never a gate ──────────────────────
+  // Every outcome reaches the menu. No answer excludes anyone, and no age is
+  // "out of scope" — the age is captured for KPI reporting and to auto-select
+  // the referral link (25 & under → INSIGHT, 26+ → CREST).
+  if (!screenerEnabled()) {
+    if (plausible) {
+      return { age, conversationPhase: 'menu', pendingResponse: SCENARIO_MENU_TEXT };
+    }
+    // First non-answer → one re-prompt (stay in ageCheck; the copy still
+    // contains "how old are you" so the router routes back here).
+    if (!state.ageAsked) {
+      return { ageAsked: true, pendingResponse: AGE_REPROMPT_TEXT };
+    }
+    // Second non-answer → proceed with age unknown.
+    return { age: null, conversationPhase: 'menu', pendingResponse: SCENARIO_MENU_TEXT };
+  }
 
   // Couldn't read a plausible age → re-prompt. Keep the "how old are you"
   // marker so the router keeps routing back here.
-  if (age === null || age < 5 || age > 120) {
+  if (!plausible) {
     return {
       pendingResponse:
         "Sorry, I didn't quite catch that — how old are you? " +

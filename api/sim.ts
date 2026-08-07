@@ -4,13 +4,12 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getRedis } from '../src/lib/redis';
 import { processMessage } from '../src/graph/runner';
 import { SessionManager } from '../src/services/sessionManager';
-import { AIBotsClient } from '../src/services/aiBotsClient';
-import { DifyClient } from '../src/services/difyClient';
-import { FallbackAIClient } from '../src/services/fallbackAIClient';
 import { makeCareyAIClient } from '../src/services/makeCareyAIClient';
+import { makeSocialCoachClient } from '../src/services/makeSocialCoachClient';
 import { DirectLLMClient } from '../src/services/directLLMClient';
 import { INTENT_CLASSIFIER_PROMPT } from '../src/nodes/intentClassifierNode';
 import { getMenuMode } from '../src/lib/menuMode';
+import { getStoredAge, setStoredAge } from '../src/lib/ageStore';
 import type { NormalizedMessage } from '../src/types/platform';
 import type { Platform } from '../src/types/state';
 
@@ -83,16 +82,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     whitelist: { isAuthorized: async () => true },
     session,
     aiBots: makeCareyAIClient(),
-    socialCoach: new FallbackAIClient(
-      new AIBotsClient(
-        process.env.DIRECTUS_SOCIALCOACH_CREATE_CHAT_URL ?? '',
-        process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
-      ),
-      new DifyClient(
-        process.env.DIFY_API_URL ?? '',
-        process.env.DIFY_SOCIALCOACH_API_KEY ?? '',
-      ),
-    ),
+    // Same provider selection as the live webhook, so sims exercise the real path.
+    socialCoach: makeSocialCoachClient(),
     intentLLM: new DirectLLMClient({
       apiKey: process.env.QWEN_API_KEY ?? '',
       baseURL: process.env.QWEN_BASE_URL ?? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
@@ -101,6 +92,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }),
     menuMode,
     typing: { sendTypingIndicator: async () => {} },
+    ageStore: {
+      get: (p: Platform, u: string) => getStoredAge(redis, p, u),
+      set: (p: Platform, u: string, a: number) => setStoredAge(redis, p, u, a),
+    },
   };
 
   const msg: NormalizedMessage = {

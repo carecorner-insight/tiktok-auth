@@ -10,6 +10,7 @@ import { makeEmergencyHandler } from '../nodes/emergencyHandler';
 import { makeMenuPresenter } from '../nodes/menuPresenter';
 import { makeIntentClassifierNode } from '../nodes/intentClassifierNode';
 import type { MenuMode } from '../lib/menuMode';
+import { scenarioMenuEnabled } from '../lib/pivotFlags';
 import { makeResourceRedirectNode } from '../nodes/resourceRedirectNode';
 import { restartNode } from '../nodes/restartNode';
 import { ageCheckNode } from '../nodes/ageCheckNode';
@@ -70,6 +71,9 @@ const GraphAnnotation = Annotation.Root({
   crisisDetected:     Annotation<boolean>,
   pendingHandoff:     Annotation<'socialCoach' | null>,
   socialCoachOffered: Annotation<boolean>,
+  referralRequested:  Annotation<boolean>,
+  awaitingReferralAge: Annotation<boolean>,
+  ageAsked:           Annotation<boolean>,
   justSwitchedLane:   Annotation<boolean>,
   aiBotChatId:        Annotation<string | null>,
 });
@@ -118,14 +122,26 @@ function routeFromIntentClassifier(state: typeof GraphAnnotation.State): string 
     console.log('[route] intentClassifier → sessionPersister (unclear → menu fallback)');
     return 'sessionPersister';
   }
-  const map: Record<number, string> = {
-    1: 'freeTextNode',
-    2: 'socialCoachNode',
-    3: 'resourceRedirectNode',
-  };
+  const map: Record<number, string> = scenarioMenuEnabled()
+    ? { 1: 'socialCoachNode', 2: 'socialCoachNode', 3: 'socialCoachNode',
+        4: 'socialCoachNode', 5: 'socialCoachNode', 6: 'socialCoachNode' }
+    : { 1: 'freeTextNode', 2: 'socialCoachNode', 3: 'resourceRedirectNode' };
   const next = map[state.selectedOption];
   console.log(`[route] intentClassifier → ${next} (selectedOption=${state.selectedOption})`);
   return next;
+}
+
+// The coach emitted [REFERRAL] — hand off to the age-triaged referral. This is
+// the Growing We build's only user-reachable route to a human.
+function routeFromSocialCoach(state: typeof GraphAnnotation.State): string {
+  if (state.crisisDetected && state.conversationPhase === 'crisis') {
+    return 'emergencyHandler';
+  }
+  if (state.referralRequested) {
+    console.log('[route] socialCoach → resourceRedirectNode (referral)');
+    return 'resourceRedirectNode';
+  }
+  return 'sessionPersister';
 }
 
 // ── Graph builder ─────────────────────────────────────────────────────────────
@@ -196,6 +212,13 @@ export function buildGraph(services: GraphServices) {
       menuPresenter:    'menuPresenter',
     })
 
+    // ── socialCoach → crisis | referral | done ──
+    .addConditionalEdges('socialCoachNode', routeFromSocialCoach, {
+      emergencyHandler:     'emergencyHandler',
+      resourceRedirectNode: 'resourceRedirectNode',
+      sessionPersister:     'sessionPersister',
+    })
+
     // ── intentClassifier → crisis | option node | menu fallback ──
     .addConditionalEdges('intentClassifierNode', routeFromIntentClassifier, {
       emergencyHandler:     'emergencyHandler',
@@ -214,7 +237,6 @@ export function buildGraph(services: GraphServices) {
     .addEdge('emergencyHandler',     'sessionPersister')
     .addEdge('menuPresenter',        'sessionPersister')
     .addEdge('freeTextNode',         'sessionPersister')
-    .addEdge('socialCoachNode',      'sessionPersister')
     .addEdge('resourceRedirectNode', 'sessionPersister')
     .addEdge('sessionPersister',     END);
 

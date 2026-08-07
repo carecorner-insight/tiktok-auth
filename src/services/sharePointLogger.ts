@@ -22,12 +22,20 @@ export class SharePointLogger {
     state: CareyBotState,
     userMessage: string,
     aiResponse: string,
+    username?: string,
   ): Promise<void> {
     const payload = {
       platform: state.platform,
       userId: state.userId,
+      // Telegram @handle when available; '' otherwise. Kept as a stable field so
+      // the Power Automate column mapping never breaks (F4).
+      username: username ?? '',
       conversationId: state.conversationId,
       tag: state.tag,
+      // Explicit safety flag the daily staff-report flow filters on. Do NOT
+      // infer this from conversationPhase — with the screener disabled, `tag`
+      // is never set, so this is the only reliable crisis signal.
+      crisisDetected: state.crisisDetected === true,
       conversationPhase: state.conversationPhase,
       questionIndex: state.questionIndex,
       answers: state.answers,

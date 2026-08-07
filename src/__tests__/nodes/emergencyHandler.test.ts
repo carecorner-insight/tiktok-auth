@@ -6,6 +6,11 @@ const typing = { sendTypingIndicator: jest.fn().mockResolvedValue(undefined) };
 
 beforeEach(() => jest.clearAllMocks());
 
+// The pivot's F3 behaviour is the default; these existing suites cover the
+// opt-out (today's AI-generated crisis reply, kept for the NUS study build).
+beforeAll(() => { process.env.CRISIS_STATIC_FIRST = 'false'; });
+afterAll(() => { delete process.env.CRISIS_STATIC_FIRST; });
+
 describe('emergencyHandler — AI reply with a GUARANTEED static hotline fallback', () => {
   it('returns the AI reply and flags crisis when AIBots succeeds', async () => {
     const aiBots = {

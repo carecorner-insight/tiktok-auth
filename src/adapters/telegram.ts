@@ -22,12 +22,16 @@ export class TelegramAdapter implements IPlatformAdapter {
     if (typeof message['text'] !== 'string') throw new Error('TelegramAdapter: non-text message type not supported');
 
     const from = message['from'] as Record<string, unknown>;
+    // Username only — first_name / last_name are deliberately NOT captured, to
+    // keep the personal-data footprint on the permanent log to a minimum.
+    const username = typeof from['username'] === 'string' ? from['username'] : undefined;
     return {
       platform: 'telegram',
       userId: String(from['id']),
       messageId: String(update['update_id'] ?? ''),
       text: message['text'],
       timestamp: (message['date'] as number) * 1000,
+      username,
       raw,
     };
   }

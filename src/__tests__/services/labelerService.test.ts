@@ -1,4 +1,8 @@
-import { LabelerService, parseLabelerRows } from '@/services/labelerService';
+import {
+  LabelerService,
+  parseLabelerRows,
+  makeSharePointLabelerFetcher,
+} from '@/services/labelerService';
 import type { LabelerEntry } from '@/lib/labelers';
 
 function makeRedisMock() {
@@ -65,6 +69,37 @@ describe('parseLabelerRows (Power Automate → entries)', () => {
     expect(parseLabelerRows(null)).toEqual([]);
     expect(parseLabelerRows('nope')).toEqual([]);
     expect(parseLabelerRows([1, 'x', null])).toEqual([]);
+  });
+});
+
+describe('makeSharePointLabelerFetcher — error clarity', () => {
+  const withFetch = (impl: () => Promise<unknown>) => {
+    (globalThis as { fetch?: unknown }).fetch = impl as never;
+  };
+  const realFetch = globalThis.fetch;
+  afterEach(() => { (globalThis as { fetch?: unknown }).fetch = realFetch; });
+
+  it('names the missing "Response" action when the body is empty (the 202 trap)', async () => {
+    withFetch(async () => ({ ok: true, status: 202, text: async () => '' }));
+    await expect(makeSharePointLabelerFetcher('https://flow')()).rejects.toThrow(/Response.*action/i);
+  });
+
+  it('reports non-JSON bodies with a snippet instead of a parse error', async () => {
+    withFetch(async () => ({ ok: true, status: 200, text: async () => '<html>error page</html>' }));
+    await expect(makeSharePointLabelerFetcher('https://flow')()).rejects.toThrow(/not JSON/i);
+  });
+
+  it('surfaces the HTTP status on a failed request', async () => {
+    withFetch(async () => ({ ok: false, status: 403, text: async () => '' }));
+    await expect(makeSharePointLabelerFetcher('https://flow')()).rejects.toThrow(/HTTP 403/);
+  });
+
+  it('parses a healthy response', async () => {
+    withFetch(async () => ({
+      ok: true, status: 200,
+      text: async () => JSON.stringify([{ Token: 't', Title: 'Alice', Email: 'a@x.org', Status: 'Approved' }]),
+    }));
+    await expect(makeSharePointLabelerFetcher('https://flow')()).resolves.toHaveLength(1);
   });
 });
 

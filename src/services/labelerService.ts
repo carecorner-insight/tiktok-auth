@@ -86,8 +86,39 @@ export function makeSharePointLabelerFetcher(url: string): FetchLabelersFn {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    if (!res.ok) throw new Error(`labeler list fetch failed: ${res.status}`);
-    return parseLabelerRows(await res.json());
+    if (!res.ok) throw new Error(`labeler list fetch failed: HTTP ${res.status}`);
+
+    // Read as text first: a Power Automate flow with no "Response" action
+    // returns 202 with an EMPTY body, and res.json() would surface that as an
+    // opaque "Unexpected end of JSON input". Name the actual cause instead.
+    const text = await res.text();
+    if (!text.trim()) {
+      throw new Error(
+        `labeler list fetch returned an empty body (HTTP ${res.status}). ` +
+          `A Power Automate HTTP flow returns 202 with no body unless it ends ` +
+          `with a "Response" action — add one that returns the Get items "value" array.`,
+      );
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      throw new Error(
+        `labeler list response was not JSON (HTTP ${res.status}): ${text.slice(0, 200)}`,
+      );
+    }
+
+    const entries = parseLabelerRows(payload);
+    if (!entries.length) {
+      // Parsed fine but nothing usable — usually a Status filter excluding every
+      // row, or Token/Name columns that are empty or named unexpectedly.
+      console.warn(
+        '[labelers] reviewer list parsed but contained 0 approved entries — ' +
+          'check the Status values and that Token/Name are populated.',
+      );
+    }
+    return entries;
   };
 }
 

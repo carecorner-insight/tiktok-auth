@@ -10,9 +10,7 @@ import { WhitelistService } from '../src/services/whitelistService';
 import { SessionManager } from '../src/services/sessionManager';
 import { SharePointLogger } from '../src/services/sharePointLogger';
 import { DemographicsLogger } from '../src/services/demographicsLogger';
-import { AIBotsClient } from '../src/services/aiBotsClient';
-import { DifyClient } from '../src/services/difyClient';
-import { FallbackAIClient } from '../src/services/fallbackAIClient';
+import { makeSocialCoachClient } from '../src/services/makeSocialCoachClient';
 import { makeCareyAIClient } from '../src/services/makeCareyAIClient';
 import { DirectLLMClient } from '../src/services/directLLMClient';
 import { INTENT_CLASSIFIER_PROMPT } from '../src/nodes/intentClassifierNode';
@@ -20,6 +18,7 @@ import type { IPlatformAdapter } from '../src/types/platform';
 import type { Platform } from '../src/types/state';
 import { pushUatLog, providerFromChatId } from '../src/lib/uatLog';
 import { getMenuMode } from '../src/lib/menuMode';
+import { getStoredAge, setStoredAge } from '../src/lib/ageStore';
 
 export const config = { runtime: 'nodejs', maxDuration: 60 };
 
@@ -135,18 +134,10 @@ async function handleMessage(
       // Carey's client — AIBots+Dify by default, or direct Qwen when
       // USE_DIRECT_LLM=true (efficacy experiment; off by default).
       aiBots: makeCareyAIClient(),
-      // Menu option 5 — separate AIBots/Directus bot (its own seeded prompt),
-      // with its own Dify social-coach fallback. Shares the send URL (chat_id).
-      socialCoach: new FallbackAIClient(
-        new AIBotsClient(
-          process.env.DIRECTUS_SOCIALCOACH_CREATE_CHAT_URL ?? '',
-          process.env.DIRECTUS_SEND_MESSAGE_URL ?? '',
-        ),
-        new DifyClient(
-          process.env.DIFY_API_URL ?? '',
-          process.env.DIFY_SOCIALCOACH_API_KEY ?? '',
-        ),
-      ),
+      // Growing We social coach. Direct Qwen by default (holds our own prompt
+      // + the [CRISIS]/[REFERRAL] tag contract); COACH_PROVIDER=aibots switches
+      // to the seeded Directus bot with its Dify fallback.
+      socialCoach: makeSocialCoachClient(),
       // Intent classification for the open-ended post-screener entry — a
       // direct OpenAI-compatible call (single-token output, no AIBots session).
       intentLLM: new DirectLLMClient({
@@ -156,6 +147,12 @@ async function handleMessage(
         systemPrompt: INTENT_CLASSIFIER_PROMPT,
       }),
       typing: adapter,
+      // Persistent per-user age (F2) — survives the 6h session, so a returning
+      // user is never re-asked and referral triage still works.
+      ageStore: {
+        get: (p: Platform, u: string) => getStoredAge(redis, p, u),
+        set: (p: Platform, u: string, a: number) => setStoredAge(redis, p, u, a),
+      },
     };
 
     const logUrl = process.env.POWER_AUTOMATE_WEBHOOK_URL;
@@ -178,7 +175,7 @@ async function handleMessage(
       if (logger && fallbackState) {
         // Await: fire-and-forget would be dropped when the serverless function
         // freezes before the HTTP POST completes. logger.log never throws.
-        await logger.log(fallbackState, msg.text, responseText);
+        await logger.log(fallbackState, msg.text, responseText, msg.username);
       }
       if (uatEnabled) {
         try {
@@ -212,7 +209,7 @@ async function handleMessage(
     // Await: the user already has their reply (sendMessage above), so this adds
     // no perceived latency, and awaiting prevents the log POST being dropped
     // when the serverless function freezes. logger.log never throws.
-    if (logger) await logger.log(result.state, msg.text, result.response);
+    if (logger) await logger.log(result.state, msg.text, result.response, msg.username);
 
     if (uatEnabled) {
       try {

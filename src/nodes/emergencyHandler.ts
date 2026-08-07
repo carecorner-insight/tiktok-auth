@@ -2,6 +2,7 @@ import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { EMERGENCY_MESSAGE } from '../config/questionnaire';
 import { parseCrisisReply } from '../lib/crisisDetection';
+import { staticFirstCrisis } from '../lib/pivotFlags';
 
 interface IAIBotsClient {
   chat(chatId: string | null, text: string, primeMessage?: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<{ reply: string; chatId: string }>;
@@ -13,6 +14,21 @@ interface ITypingIndicator {
 
 export function makeEmergencyHandler(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
   return async function emergencyHandler(state: CareyBotState): Promise<NodeResult> {
+    // ── F3: static-first crisis ──────────────────────────────────────────────
+    // The FIRST crisis turn is the exact clinically-approved wording, produced
+    // with no generative model at all. This is the pivot's answer to the
+    // governance concern about an LLM being the primary handler of self-harm
+    // disclosures. Follow-up turns (already in the crisis phase) fall through
+    // to the AI path below so the bot can stay with the user.
+    const isFirstCrisisTurn = state.conversationPhase !== 'crisis';
+    if (staticFirstCrisis() && isFirstCrisisTurn) {
+      return {
+        pendingResponse: EMERGENCY_MESSAGE,
+        conversationPhase: 'crisis',
+        crisisDetected: true,
+      };
+    }
+
     // AI-generated crisis response with a GUARANTEED static-hotline fallback, so
     // 1771 is never lost — regardless of which phase routed us here (screener,
     // safety gate, intent label, the router's crisis backstop, or an ongoing

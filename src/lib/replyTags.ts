@@ -3,9 +3,13 @@
 // The LLM bots (Carey free-text bot, social coach) signal routing decisions by
 // embedding bracket tags anywhere in their reply:
 //
-//   [CRISIS]  — the user is in distress; route this turn to emergencyHandler.
-//   [SOCIAL]  — the user is describing a social-situation struggle; offer the
-//               Growing We social coach.
+//   [CRISIS]   — the user is in distress; route this turn to emergencyHandler.
+//   [SOCIAL]   — the user is describing a social-situation struggle; offer the
+//                Growing We social coach.
+//   [REFERRAL] — the user would be better served by a real person; route to the
+//                age-triaged referral (INSIGHT / CREST). This is the pivot's
+//                ONLY route to a human, since the 6-option scenario menu has no
+//                "connect with our team" entry.
 //
 // This module generalises the original parseCrisisReply so new tags can be
 // added in one place. Detection is case-insensitive and tolerant of internal
@@ -22,9 +26,11 @@ export interface ParsedReply {
   isCrisis: boolean;
   /** True when a [SOCIAL] tag was present AND no crisis tag was present. */
   suggestsSocialCoach: boolean;
+  /** True when a [REFERRAL] tag was present AND no crisis tag was present. */
+  suggestsReferral: boolean;
 }
 
-const KNOWN_TAGS = ['crisis', 'social'] as const;
+const KNOWN_TAGS = ['crisis', 'social', 'referral'] as const;
 type KnownTag = (typeof KNOWN_TAGS)[number];
 
 // Detection: the tag anywhere, case-insensitive, internal whitespace allowed.
@@ -44,6 +50,7 @@ const stripPattern = (tag: KnownTag): RegExp =>
 export function parseReplyTags(raw: string): ParsedReply {
   const isCrisis = detectPattern('crisis').test(raw);
   const hasSocial = detectPattern('social').test(raw);
+  const hasReferral = detectPattern('referral').test(raw);
 
   let reply = raw;
   for (const tag of KNOWN_TAGS) {
@@ -53,7 +60,9 @@ export function parseReplyTags(raw: string): ParsedReply {
   return {
     reply: reply.trim(),
     isCrisis,
-    // Crisis takes precedence — suppress the coach offer on a crisis turn.
+    // Crisis takes precedence — never offer a coaching module or a support link
+    // in the same breath as a crisis response.
     suggestsSocialCoach: hasSocial && !isCrisis,
+    suggestsReferral: hasReferral && !isCrisis,
   };
 }

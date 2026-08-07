@@ -11,7 +11,12 @@ export type ConversationPhase =
   | 'crisis'
   | 'ended';
 
-export type MenuOption = 1 | 2 | 3;
+/**
+ * 1–3 in the triage build (talk / coach / resources).
+ * 1–6 in the Growing We build, where every option is a scenario feeding the
+ * social coach. See SCENARIOS in config/questionnaire.ts.
+ */
+export type MenuOption = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface Message {
   role: 'user' | 'assistant';
@@ -57,6 +62,18 @@ export interface CareyBotState {
   // True once the coach has been offered this session — prevents repeat nagging
   socialCoachOffered: boolean;
 
+  // Set for one turn when the coach emits [REFERRAL] — the Growing We build's
+  // only route to a human, since the scenario menu has no team option.
+  referralRequested: boolean;
+
+  // True while waiting on the "are you 25 or under?" fallback, asked only when
+  // no age was captured at welcome.
+  awaitingReferralAge: boolean;
+
+  // True once the age question has been re-prompted. A second non-answer
+  // proceeds to the menu with age unknown — the question never gates anyone.
+  ageAsked: boolean;
+
   // Set true for exactly one turn when the intent classifier seamlessly switches
   // the user into a NEW lane mid-conversation (intent mode). Tells the target
   // lane node to start a fresh backend session, forward the prior transcript as
@@ -87,6 +104,9 @@ export const initialState = (
   crisisDetected: false,
   pendingHandoff: null,
   socialCoachOffered: false,
+  referralRequested: false,
+  awaitingReferralAge: false,
+  ageAsked: false,
   justSwitchedLane: false,
   aiBotChatId: null,
 });

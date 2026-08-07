@@ -10,6 +10,11 @@ export interface NormalizedMessage {
   conversationId?: string;
   // Platform-native message ID used for idempotency dedup in the webhook handler
   messageId?: string;
+  // Telegram @handle, when the user has one — many do not. Logged so staff can
+  // identify a flagged user in the daily safety report (F4). The numeric userId
+  // remains the stable identifier; this is a convenience label only, and it can
+  // change at any time because users may edit their handle.
+  username?: string;
 }
 
 export interface IPlatformAdapter {

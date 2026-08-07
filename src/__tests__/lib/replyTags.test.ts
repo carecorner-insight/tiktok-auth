@@ -7,6 +7,7 @@ describe('parseReplyTags', () => {
       reply: 'That sounds really tough.',
       isCrisis: false,
       suggestsSocialCoach: false,
+      suggestsReferral: false,
     });
   });
 

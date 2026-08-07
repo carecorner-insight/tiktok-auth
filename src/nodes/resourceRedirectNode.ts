@@ -1,6 +1,11 @@
 import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
-import { COUNSELLING_URL } from '../config/questionnaire';
+import {
+  COUNSELLING_URL,
+  REFERRAL_AGE_FALLBACK,
+  referralUrlForAge,
+} from '../config/questionnaire';
+import { scenarioMenuEnabled } from '../lib/pivotFlags';
 import { getLastUserInput } from '../types/nodes';
 import { parseCrisisReply } from '../lib/crisisDetection';
 
@@ -15,6 +20,32 @@ interface ITypingIndicator {
 export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
   return async function resourceRedirectNode(state: CareyBotState): Promise<NodeResult> {
     const userText = getLastUserInput(state);
+
+    // ── Growing We referral (F2/F6) ──────────────────────────────────────────
+    // Reached when the coach emits [REFERRAL]. The link is auto-selected from
+    // the age captured at welcome — no question at the referral moment. Only an
+    // unknown age (the user skipped twice) triggers the fallback question.
+    if (scenarioMenuEnabled()) {
+      const url = referralUrlForAge(state.age);
+      if (url) {
+        return {
+          pendingResponse:
+            `It sounds like it could help to talk this through with someone from our team.\n\n` +
+            `You can reach them here: ${url}\n\n` +
+            `We can keep going here too — just tell me what's on your mind.`,
+          conversationPhase: 'option',
+          referralRequested: false,
+          awaitingReferralAge: false,
+        };
+      }
+      return {
+        pendingResponse: REFERRAL_AGE_FALLBACK,
+        conversationPhase: 'option',
+        referralRequested: false,
+        awaitingReferralAge: true,
+      };
+    }
+
     const isInitialSelection = /^[.\s]*[3][.\s]*$/.test(userText);
 
     // Static resource block — the counselling URL must be exact, so we never let
