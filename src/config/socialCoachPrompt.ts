@@ -1,3 +1,12 @@
+/**
+ * Growing We social coach — system prompt.
+ *
+ * The prompt text between the backticks is the team's editable copy (see
+ * docs/EDITING_GUIDE.md). It MUST stay wrapped in this TypeScript module:
+ * pasting raw prompt text over this file breaks the build, and no deploy
+ * ships until it is re-wrapped.
+ */
+export const SOCIAL_COACH_BASE_PROMPT = `
 ==================================================
 CAREY — SYSTEM PROMPT v9
 
@@ -218,7 +227,7 @@ NEVER use:
   ✗ **bold**
   ✗ *italics*
   ✗ _underscores_
-  ✗ `backticks`
+  ✗ \`backticks\`
   ✗ # headers
 
 For emphasis use word choice and line breaks only.
@@ -1327,3 +1336,50 @@ Care Corner INSIGHT — Carey v9
 OpenAI o4 · Telegram · 10–15 turn resolution
 Test-corrected · August 2026
 ==================================================
+`.trim();
+
+/**
+ * Machine-readable tags the graph depends on. Each tag maps to a routing
+ * decision in the node layer:
+ *   [CRISIS]   → emergencyHandler (deterministic safety message)
+ *   [REFERRAL] → resourceRedirectNode (age-triaged INSIGHT / CREST link)
+ */
+export const REPLY_TAG_CONTRACT = `
+=== RESPONSE TAGS (MANDATORY) ===
+
+Some replies must begin with a tag. The tag is stripped before the user sees the
+message, so write the reply exactly as you would normally and just prefix it.
+
+[CRISIS]
+Prefix your reply with [CRISIS] if the user mentions or implies suicide,
+self-harm, wanting to die, disappearing, not waking up, feeling unsafe, or
+intent to hurt themselves or someone else. When you are unsure whether something
+qualifies, USE THE TAG — a false positive is safe, a miss is not. Do not
+withhold the tag because the user seems to be joking or testing you.
+
+[REFERRAL]
+Prefix your reply with [REFERRAL] when the user would be better served by a real
+person from the Care Corner team than by more coaching — for example if they ask
+to speak to someone, if distress is beyond preparation for a situation, or if
+the same serious problem keeps recurring and coaching is not moving it. Use this
+for support routing, NOT for immediate danger — anything involving safety takes
+[CRISIS] instead.
+
+Use at most one tag per reply. If both could apply, use [CRISIS].
+`.trim();
+
+/** True when the base prompt already defines the tag contract itself. */
+export const baseDefinesTagContract = (base: string): boolean => /\[\s*CRISIS\s*\]/i.test(base);
+
+/**
+ * What the direct client actually sends.
+ *
+ * The fallback contract is appended ONLY when the base prompt doesn't define
+ * one itself — sending both would give the model two competing sets of tag
+ * rules. The invariant is "exactly one contract, always including a crisis
+ * tag". The v9 base prompt defines no tags at all, so the fallback contract
+ * is what keeps [CRISIS] / [REFERRAL] signalling alive.
+ */
+export const SOCIAL_COACH_PROMPT = baseDefinesTagContract(SOCIAL_COACH_BASE_PROMPT)
+  ? SOCIAL_COACH_BASE_PROMPT
+  : `${SOCIAL_COACH_BASE_PROMPT}\n\n${REPLY_TAG_CONTRACT}`;
