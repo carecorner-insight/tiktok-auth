@@ -17,7 +17,7 @@ import { INTENT_CLASSIFIER_PROMPT } from '../src/nodes/intentClassifierNode';
 import type { IPlatformAdapter } from '../src/types/platform';
 import type { Platform } from '../src/types/state';
 import { pushUatLog, providerFromChatId } from '../src/lib/uatLog';
-import { getMenuMode } from '../src/lib/menuMode';
+import { getMenuMode, type MenuMode } from '../src/lib/menuMode';
 import { getStoredAge, setStoredAge } from '../src/lib/ageStore';
 
 export const config = { runtime: 'nodejs', maxDuration: 60 };
@@ -97,10 +97,20 @@ async function withUserLock<T>(
 
 // ── Background message handler ────────────────────────────────────────────────
 
-async function handleMessage(
+// Exported for api/webhook-study.ts, which runs the same pipeline against the
+// study configuration (prefixed Redis, study bot token, own log list).
+export interface HandleMessageOptions {
+  /** Skip the Redis menu-mode lookup and pin a mode (study build). */
+  menuMode?: MenuMode;
+  /** Override the SharePoint log webhook; null disables logging. */
+  logUrl?: string | null;
+}
+
+export async function handleMessage(
   adapter: IPlatformAdapter,
   body: unknown,
   redis: RedisClient,
+  opts: HandleMessageOptions = {},
 ): Promise<void> {
   const tTotal = Date.now();
 
@@ -126,7 +136,7 @@ async function handleMessage(
   const tLock = Date.now();
   await withUserLock(redis, msg.platform, msg.userId, async () => {
     console.log(`[perf] lock acquire: ${Date.now() - tLock}ms`);
-    const menuMode = await getMenuMode(redis);
+    const menuMode = opts.menuMode ?? (await getMenuMode(redis));
     const services = {
       whitelist: new WhitelistService(redis, fetchWhitelistStatus),
       session: new SessionManager(redis),
@@ -155,7 +165,8 @@ async function handleMessage(
       },
     };
 
-    const logUrl = process.env.POWER_AUTOMATE_WEBHOOK_URL;
+    const logUrl =
+      opts.logUrl !== undefined ? opts.logUrl : process.env.POWER_AUTOMATE_WEBHOOK_URL;
     const logger = logUrl ? new SharePointLogger(logUrl) : null;
 
     // UAT live-log capture is enabled only when UAT_LOG_TOKEN is set, so no

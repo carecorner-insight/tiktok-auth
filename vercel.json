@@ -8,6 +8,9 @@
   "functions": {
     "api/webhook.ts": {
       "maxDuration": 60
+    },
+    "api/webhook-study.ts": {
+      "maxDuration": 60
     }
   }
 }
