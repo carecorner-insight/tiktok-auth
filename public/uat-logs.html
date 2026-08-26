@@ -5,80 +5,131 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CareyBot — UAT Live Log</title>
   <style>
+    /* ── CareyBot shared look (inlined on every internal tool page) ── */
     :root {
-      --bg: #0f1419; --panel: #1a2029; --border: #2a3340; --text: #e6edf3;
-      --muted: #8b98a5; --user: #58a6ff; --bot: #3fb950;
-      --low: #3fb950; --elevated: #d29922; --moderate: #db6d28; --high: #f85149; --crisis: #f85149;
+      color-scheme: light;
+      --bg: #f3f6f5; --panel: #ffffff; --border: #dbe3e0; --border-strong: #c2cec9;
+      --text: #24322c; --muted: #5d6d66;
+      --accent: #2e7466; --accent-strong: #235a4f; --accent-soft: #e4efec;
+      --user: #1d5fa8; --bot: #2e7466;
+      --fail: #b42331;
+      --low: #1a7f4b; --elevated: #8a5a00; --moderate: #9a4b12; --high: #b42331; --crisis: #b42331;
+      --pass-bg: #dcefe4; --fail-bg: #f9dee1; --warn-bg: #f7ecd2;
+      --mod-bg: #f8e5d4; --neutral-bg: #e7ebe9;
+      --shadow: 0 1px 2px rgba(30,45,40,.06), 0 1px 1px rgba(30,45,40,.04);
     }
     * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0; background: var(--bg); color: var(--text); font-size: 14px;
-    }
-    header {
-      position: sticky; top: 0; z-index: 10; background: var(--panel);
-      border-bottom: 1px solid var(--border); padding: 12px 20px;
-      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-    }
-    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+    .muted { color: var(--muted); }
+    /* header */
+    header { position: sticky; top: 0; z-index: 10; background: var(--panel);
+      border-bottom: 1px solid var(--border); padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand-mark { width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex: none; }
+    .brand-text h1 { font-size: 15px; margin: 0; font-weight: 650; line-height: 1.2; }
+    .brand-sub { font-size: 11px; color: var(--muted); display: block; }
+    .nav { display: flex; gap: 4px; flex-wrap: wrap; }
+    .nav a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 999px;
+      font-size: 13px; border: 1px solid transparent; }
+    .nav a:hover { background: var(--accent-soft); color: var(--accent-strong); }
+    .nav a.active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600;
+      border-color: #c8ded8; }
     .status { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
-    .dot.live { background: var(--bot); box-shadow: 0 0 6px var(--bot); }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); flex: none; }
+    .dot.live { background: #2f9e68; box-shadow: 0 0 5px #2f9e6888; }
     .dot.err { background: var(--high); }
     .controls { margin-left: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .controls input, .controls button {
-      background: var(--bg); color: var(--text); border: 1px solid var(--border);
-      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+    .controls input[type="text"], .controls button {
+      background: var(--panel); color: var(--text); border: 1px solid var(--border-strong);
+      border-radius: 7px; padding: 6px 10px; font-size: 13px; font-family: inherit;
     }
     .controls button { cursor: pointer; }
-    .controls button:hover { border-color: var(--user); }
-    .controls label { color: var(--muted); display: flex; align-items: center; gap: 5px; }
+    .controls button:hover { border-color: var(--accent); color: var(--accent-strong); }
+    .controls label { color: var(--muted); display: flex; align-items: center; gap: 5px; font-size: 13px; }
+    button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    /* feed */
     #feed { padding: 16px 20px; max-width: 1100px; margin: 0 auto; }
     .turn {
-      background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--border);
-      border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;
+      background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--border-strong);
+      border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; box-shadow: var(--shadow);
     }
     .turn.tag-low { border-left-color: var(--low); }
     .turn.tag-elevated { border-left-color: var(--elevated); }
     .turn.tag-moderate { border-left-color: var(--moderate); }
     .turn.tag-high, .turn.crisis { border-left-color: var(--crisis); }
-    .turn.crisis { background: #2a1416; }
+    .turn.crisis { background: #fdf1f2; }
     .meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
-    .badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-    .badge.platform { background: var(--border); color: var(--text); }
-    .badge.tag-low { background: var(--low); color: #04260f; }
-    .badge.tag-elevated { background: var(--elevated); color: #2a1d00; }
-    .badge.tag-moderate { background: var(--moderate); color: #2a1500; }
-    .badge.tag-high { background: var(--high); color: #2a0608; }
+    .badge { padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .badge.platform { background: var(--neutral-bg); color: var(--text); }
+    .badge.tag-low { background: var(--pass-bg); color: var(--low); }
+    .badge.tag-elevated { background: var(--warn-bg); color: var(--elevated); }
+    .badge.tag-moderate { background: var(--mod-bg); color: var(--moderate); }
+    .badge.tag-high { background: var(--fail-bg); color: var(--high); }
     .badge.crisis { background: var(--crisis); color: #fff; }
     .badge.err { background: var(--high); color: #fff; }
-    .badge.provider { background: #1f6feb33; color: var(--user); border: 1px solid #1f6feb55; }
-    .uid { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-    .msg { margin: 4px 0; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+    .badge.provider { background: #dde9f8; color: #1d4f91; }
+    .uid { font-family: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace; font-size: .95em; }
+    .msg { margin: 4px 0; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
     .msg .who { font-weight: 600; margin-right: 6px; }
     .msg.user .who { color: var(--user); }
     .msg.bot .who { color: var(--bot); }
     .empty { color: var(--muted); text-align: center; padding: 60px 20px; }
-    .gate { max-width: 420px; margin: 80px auto; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 28px; }
-    .gate h2 { margin-top: 0; }
-    .gate input { width: 100%; margin: 12px 0; }
-    .gate button { width: 100%; background: var(--user); color: #04101f; border: none; font-weight: 600; padding: 10px; }
+    /* token gate */
+    .gate { max-width: 420px; margin: 9vh auto 0; padding: 0 16px; }
+    .gate-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      padding: 30px 28px; box-shadow: var(--shadow); text-align: center; }
+    .gate-card .brand-mark { margin: 0 auto 12px; width: 44px; height: 44px; font-size: 20px; border-radius: 12px; }
+    .gate-card h2 { font-size: 19px; margin: 0 0 6px; }
+    .gate-card p { margin: 0 0 14px; }
+    .gate-card input { width: 100%; margin: 4px 0 12px; padding: 11px 12px; background: var(--panel);
+      color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; font-size: 14px; }
+    .gate-card button { width: 100%; background: var(--accent); color: #fff; border: none;
+      font-weight: 600; padding: 11px; font-size: 14px; border-radius: 8px; cursor: pointer; }
+    .gate-card button:hover { background: var(--accent-strong); }
+    .gate-err { color: var(--fail); min-height: 18px; font-size: 13px; margin: 10px 0 0; }
+    .gate-hint { font-size: 12px; margin-top: 12px; }
     .hidden { display: none; }
+    @media (max-width: 720px) {
+      header { padding: 10px 14px; gap: 10px; }
+      #feed { padding: 12px 14px; }
+      .controls { margin-left: 0; width: 100%; }
+      .controls input[type="text"] { flex: 1 1 140px; }
+      .gate { margin-top: 5vh; }
+    }
   </style>
 </head>
 <body>
   <div id="gate" class="gate hidden">
-    <h2>UAT Live Log</h2>
-    <p style="color:var(--muted)">Enter the access token to view live conversations.</p>
-    <input id="tokenInput" type="password" placeholder="Access token" />
-    <button id="tokenBtn">View logs</button>
-    <p id="gateErr" style="color:var(--high);min-height:18px"></p>
+    <div class="gate-card">
+      <div class="brand-mark" aria-hidden="true">C</div>
+      <h2>UAT Live Log</h2>
+      <p class="muted">Internal tool for Care Corner INSIGHT staff. Enter the access token to view live CareyBot test conversations.</p>
+      <input id="tokenInput" type="password" placeholder="Access token" autocomplete="off" />
+      <button id="tokenBtn">View logs</button>
+      <p id="gateErr" class="gate-err"></p>
+      <p class="gate-hint muted">Don't have a token? Ask the CareyBot project team.</p>
+    </div>
   </div>
 
   <div id="app" class="hidden">
     <header>
-      <h1>CareyBot — UAT Live Log</h1>
-      <a id="navEval" href="#" style="color:var(--muted);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px">Eval Dashboard →</a>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">C</div>
+        <div class="brand-text">
+          <h1>UAT Live Log</h1>
+          <span class="brand-sub">CareyBot · Care Corner INSIGHT</span>
+        </div>
+      </div>
+      <nav class="nav">
+        <a class="active" href="#">Live Log</a>
+        <a id="navEval" href="#">Evals</a>
+        <a href="label.html">Review</a>
+        <a id="navAgreement" href="#">Agreement</a>
+      </nav>
       <div class="status"><span id="dot" class="dot"></span><span id="statusText">connecting…</span></div>
       <div class="controls">
         <input id="filter" type="text" placeholder="Filter by user ID…" />
@@ -90,7 +141,7 @@
         <button id="menuModeBtn" title="Post-screener entry: open-ended intent classifier vs numbered menu">Menu: …</button>
       </div>
     </header>
-    <div id="feed"><div class="empty">Waiting for activity…</div></div>
+    <div id="feed"><div class="empty">Waiting for activity — new conversation turns will appear here as testers chat with CareyBot.</div></div>
   </div>
 
   <script>
@@ -244,6 +295,7 @@
         timer = setInterval(poll, POLL_MS);
 
         document.getElementById('navEval').href = 'eval-dashboard.html?token=' + encodeURIComponent(token);
+        document.getElementById('navAgreement').href = 'label-dashboard.html?token=' + encodeURIComponent(token);
         document.getElementById('filter').addEventListener('input', render);
         document.getElementById('crisisOnly').addEventListener('change', render);
         document.getElementById('pauseBtn').addEventListener('click', function () {

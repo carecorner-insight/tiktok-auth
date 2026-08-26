@@ -5,95 +5,150 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CareyBot — Eval Dashboard</title>
   <style>
+    /* ── CareyBot shared look (inlined on every internal tool page) ── */
     :root {
-      --bg: #0f1419; --panel: #1a2029; --border: #2a3340; --text: #e6edf3;
-      --muted: #8b98a5; --user: #58a6ff; --bot: #3fb950;
-      --pass: #3fb950; --fail: #f85149; --warn: #d29922; --neutral: #6e7681;
-      --low: #3fb950; --elevated: #d29922; --moderate: #db6d28; --high: #f85149;
+      color-scheme: light;
+      --bg: #f3f6f5; --panel: #ffffff; --border: #dbe3e0; --border-strong: #c2cec9;
+      --text: #24322c; --muted: #5d6d66;
+      --accent: #2e7466; --accent-strong: #235a4f; --accent-soft: #e4efec;
+      --user: #1d5fa8; --bot: #2e7466;
+      --pass: #1a7f4b; --fail: #b42331; --warn: #8a5a00; --neutral: #5d6d66;
+      --low: #1a7f4b; --elevated: #8a5a00; --moderate: #9a4b12; --high: #b42331;
+      --pass-bg: #dcefe4; --fail-bg: #f9dee1; --warn-bg: #f7ecd2;
+      --mod-bg: #f8e5d4; --neutral-bg: #e7ebe9;
+      --zebra: #f7faf9;
+      --shadow: 0 1px 2px rgba(30,45,40,.06), 0 1px 1px rgba(30,45,40,.04);
     }
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0; background: var(--bg); color: var(--text); font-size: 14px; }
-    header { position: sticky; top: 0; z-index: 10; background: var(--panel);
-      border-bottom: 1px solid var(--border); padding: 12px 20px;
-      display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
-    .nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 6px;
-      border: 1px solid var(--border); font-size: 13px; }
-    .nav a.active { color: var(--text); border-color: var(--user); }
-    .nav a:hover { border-color: var(--user); }
-    .spacer { margin-left: auto; }
-    button { background: var(--bg); color: var(--text); border: 1px solid var(--border);
-      border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
-    button:hover { border-color: var(--user); }
-    main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+    .mono { font-family: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace; font-size: .92em; }
     .muted { color: var(--muted); }
+    a { color: var(--accent-strong); }
+    /* header */
+    header { position: sticky; top: 0; z-index: 10; background: var(--panel);
+      border-bottom: 1px solid var(--border); padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand-mark { width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex: none; }
+    .brand-text h1 { font-size: 15px; margin: 0; font-weight: 650; line-height: 1.2; }
+    .brand-sub { font-size: 11px; color: var(--muted); display: block; }
+    .nav { display: flex; gap: 4px; flex-wrap: wrap; }
+    .nav a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 999px;
+      font-size: 13px; border: 1px solid transparent; }
+    .nav a:hover { background: var(--accent-soft); color: var(--accent-strong); }
+    .nav a.active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600;
+      border-color: #c8ded8; }
+    .spacer { margin-left: auto; }
+    button { background: var(--panel); color: var(--text); border: 1px solid var(--border-strong);
+      border-radius: 7px; padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: inherit; }
+    button:hover { border-color: var(--accent); color: var(--accent-strong); }
+    button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    main { padding: 20px; max-width: 1200px; margin: 0 auto; }
     /* KPIs */
     .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; margin-bottom: 24px; }
-    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
-    .kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-    .kpi .value { font-size: 26px; font-weight: 700; margin-top: 4px; }
-    h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
-      border-bottom: 1px solid var(--border); padding-bottom: 6px; margin: 28px 0 14px; }
+    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 14px 16px; box-shadow: var(--shadow); }
+    .kpi .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+    .kpi .value { font-size: 26px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+      border-bottom: 1px solid var(--border); padding-bottom: 6px; margin: 28px 0 14px; font-weight: 650; }
     /* tables */
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-    th { color: var(--muted); font-weight: 600; font-size: 12px; }
+    #scorecard, #trend { overflow-x: auto; -webkit-overflow-scrolling: touch;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) td { background: var(--zebra); }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; background: var(--panel); }
     tr.clickable { cursor: pointer; }
-    tr.clickable:hover td { background: #20283440; }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
-    .pill.pass { background: var(--pass); color: #04260f; }
-    .pill.fail { background: var(--fail); color: #2a0608; }
-    .pill.err  { background: var(--neutral); color: #fff; }
-    .pill.warn { background: var(--warn); color: #2a1d00; }
-    .pill.tag-low { background: var(--low); color: #04260f; }
-    .pill.tag-elevated { background: var(--elevated); color: #2a1d00; }
-    .pill.tag-moderate { background: var(--moderate); color: #2a1500; }
-    .pill.tag-high { background: var(--high); color: #2a0608; }
-    .mono { font-family: ui-monospace, Menlo, monospace; }
+    tr.clickable:hover td { background: var(--accent-soft); }
+    .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .pill.pass { background: var(--pass-bg); color: var(--pass); }
+    .pill.fail { background: var(--fail-bg); color: var(--fail); }
+    .pill.err  { background: var(--neutral-bg); color: var(--neutral); }
+    .pill.warn { background: var(--warn-bg); color: var(--warn); }
+    .pill.tag-low { background: var(--pass-bg); color: var(--low); }
+    .pill.tag-elevated { background: var(--warn-bg); color: var(--elevated); }
+    .pill.tag-moderate { background: var(--mod-bg); color: var(--moderate); }
+    .pill.tag-high { background: var(--fail-bg); color: var(--high); }
+    .pill.mode-intent { background: #dde9f8; color: #1d4f91; }
+    .pill.mode-numbered { background: #e7dff6; color: #54408c; }
     /* trend grid */
     .grid td, .grid th { text-align: center; }
-    .cell { width: 26px; height: 22px; border-radius: 4px; display: inline-block; }
-    .cell.pass { background: var(--pass); } .cell.fail { background: var(--fail); }
-    .cell.err { background: var(--neutral); } .cell.none { background: #20283480; }
-    .legend { display: flex; gap: 14px; color: var(--muted); font-size: 12px; margin: 8px 0 0; align-items: center; }
-    .legend .cell { width: 14px; height: 14px; vertical-align: middle; margin-right: 4px; }
-    /* gate */
-    .gate { max-width: 420px; margin: 80px auto; background: var(--panel); border: 1px solid var(--border);
-      border-radius: 10px; padding: 28px; }
-    .gate input { width: 100%; margin: 12px 0; padding: 10px; background: var(--bg); color: var(--text);
-      border: 1px solid var(--border); border-radius: 6px; }
-    .gate button { width: 100%; background: var(--user); color: #04101f; border: none; font-weight: 600; padding: 10px; }
+    .cell { width: 26px; height: 22px; border-radius: 5px; display: inline-block; vertical-align: middle; }
+    .cell.pass { background: #2f9e68; } .cell.fail { background: #d8505c; }
+    .cell.err { background: #aab6b0; } .cell.none { background: #e6ebe9; }
+    .legend { display: flex; gap: 14px; color: var(--muted); font-size: 12px; margin: 10px 2px 0; align-items: center; flex-wrap: wrap; }
+    .legend .cell { width: 14px; height: 14px; margin-right: 4px; }
+    .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+    /* empty states */
+    .empty-state { padding: 36px 20px; text-align: center; color: var(--muted); }
+    .empty-state b { color: var(--text); display: block; margin-bottom: 4px; font-size: 14px; }
+    /* token gate */
+    .gate { max-width: 420px; margin: 9vh auto 0; padding: 0 16px; }
+    .gate-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      padding: 30px 28px; box-shadow: var(--shadow); text-align: center; }
+    .gate-card .brand-mark { margin: 0 auto 12px; width: 44px; height: 44px; font-size: 20px; border-radius: 12px; }
+    .gate-card h2 { border: none; color: var(--text); text-transform: none; letter-spacing: 0;
+      font-size: 19px; margin: 0 0 6px; }
+    .gate-card p { margin: 0 0 14px; }
+    .gate-card input { width: 100%; margin: 4px 0 12px; padding: 11px 12px; background: var(--panel);
+      color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; font-size: 14px; }
+    .gate-card button { width: 100%; background: var(--accent); color: #fff; border: none;
+      font-weight: 600; padding: 11px; font-size: 14px; border-radius: 8px; }
+    .gate-card button:hover { background: var(--accent-strong); color: #fff; }
+    .gate-err { color: var(--fail); min-height: 18px; font-size: 13px; margin: 10px 0 0; }
+    .gate-hint { font-size: 12px; margin-top: 12px; }
     .hidden { display: none; }
     /* modal */
-    .overlay { position: fixed; inset: 0; background: #000a; display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50; }
+    .overlay { position: fixed; inset: 0; background: rgba(22,32,28,.45); display: flex;
+      align-items: center; justify-content: center; padding: 20px; z-index: 50; }
     .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; max-width: 760px;
-      width: 100%; max-height: 86vh; overflow-y: auto; padding: 20px; }
+      width: 100%; max-height: 86vh; overflow-y: auto; padding: 20px; box-shadow: 0 12px 40px rgba(22,32,28,.25); }
     .modal h3 { margin: 0 0 4px; }
     .modal .close { float: right; }
-    .bubble { margin: 6px 0; line-height: 1.45; white-space: pre-wrap; word-break: break-word; padding: 8px 12px;
-      border-radius: 10px; max-width: 85%; }
-    .bubble.youth { background: #1f3a5f; margin-left: auto; }
-    .bubble.carey { background: #143a22; }
-    .turnmeta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .bubble { margin: 6px 0; line-height: 1.5; white-space: pre-wrap; word-break: break-word; padding: 9px 13px;
+      border-radius: 12px; max-width: 85%; border: 1px solid var(--border); }
+    .bubble.youth { background: #e8eff9; border-color: #d3e0f2; margin-left: auto; }
+    .bubble.carey { background: var(--accent-soft); border-color: #cfe2dd; }
+    .turnmeta { font-size: 10px; color: var(--muted); margin-top: 3px; }
     .assert { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+    @media (max-width: 720px) {
+      header { padding: 10px 14px; gap: 10px; }
+      main { padding: 14px; }
+      .gate { margin-top: 5vh; }
+    }
   </style>
 </head>
 <body>
   <div id="gate" class="gate hidden">
-    <h2 style="border:none;color:var(--text)">Eval Dashboard</h2>
-    <p class="muted">Enter the access token to view test metrics.</p>
-    <input id="tokenInput" type="password" placeholder="Access token" />
-    <button id="tokenBtn">View dashboard</button>
-    <p id="gateErr" style="color:var(--fail);min-height:18px"></p>
+    <div class="gate-card">
+      <div class="brand-mark" aria-hidden="true">C</div>
+      <h2>Eval Dashboard</h2>
+      <p class="muted">Internal tool for Care Corner INSIGHT staff. Enter the access token to view automated evaluation results for CareyBot.</p>
+      <input id="tokenInput" type="password" placeholder="Access token" autocomplete="off" />
+      <button id="tokenBtn">View dashboard</button>
+      <p id="gateErr" class="gate-err"></p>
+      <p class="gate-hint muted">Don't have a token? Ask the CareyBot project team.</p>
+    </div>
   </div>
 
   <div id="app" class="hidden">
     <header>
-      <h1>CareyBot — Eval Dashboard</h1>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">C</div>
+        <div class="brand-text">
+          <h1>Eval Dashboard</h1>
+          <span class="brand-sub">CareyBot · Care Corner INSIGHT</span>
+        </div>
+      </div>
       <nav class="nav">
         <a id="navLog" href="#">Live Log</a>
-        <a class="active" href="#">Eval Dashboard</a>
+        <a class="active" href="#">Evals</a>
+        <a href="label.html">Review</a>
         <a id="navAgreement" href="#">Agreement</a>
       </nav>
       <div class="spacer"></div>
@@ -104,7 +159,8 @@
       <div class="kpis" id="kpis"></div>
 
       <h2>Latest run — scorecard</h2>
-      <div id="scorecard"><p class="muted">Loading…</p></div>
+      <div id="scorecard"><div class="empty-state">Loading…</div></div>
+      <p class="hint">Click a row to view the transcript and assertion detail.</p>
 
       <h2>Pass/fail over time <span class="muted" style="text-transform:none;font-weight:400">(each column = one run, oldest → newest)</span></h2>
       <div id="trend"></div>
@@ -173,8 +229,8 @@
       }
 
       function modePill(mode) {
-        if (mode === 'intent') return '<span class="pill" style="background:#1f6feb;color:#fff">intent</span>';
-        if (mode === 'numbered') return '<span class="pill" style="background:#6e40c9;color:#fff">numbered</span>';
+        if (mode === 'intent') return '<span class="pill mode-intent">intent</span>';
+        if (mode === 'numbered') return '<span class="pill mode-numbered">numbered</span>';
         return '<span class="muted">—</span>';
       }
 
@@ -183,7 +239,7 @@
       function renderScorecard(runs) {
         var latest = runs[runs.length - 1];
         var el = document.getElementById('scorecard');
-        if (!latest) { el.innerHTML = '<p class="muted">No runs yet.</p>'; return; }
+        if (!latest) { el.innerHTML = '<div class="empty-state"><b>No eval runs yet</b>Results will appear here after the next scheduled eval run completes.</div>'; return; }
         var rows = latest.rows.slice().sort(function (a, b) {
           return a.persona.localeCompare(b.persona) || String(a.menuMode).localeCompare(String(b.menuMode));
         });
@@ -210,7 +266,7 @@
             '<td>' + (notes.join(' ') || '') + '</td>' +
           '</tr>';
         }).join('');
-        el.innerHTML = '<table>' + head + body + '</table><p class="muted" style="margin-top:8px">Click a row to view the transcript + assertion detail.</p>';
+        el.innerHTML = '<table>' + head + body + '</table>';
         el.querySelectorAll('tr.clickable').forEach(function (tr) {
           tr.addEventListener('click', function () { openDrill(tr.getAttribute('data-id')); });
         });

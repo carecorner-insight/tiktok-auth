@@ -5,92 +5,155 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CareyBot — Reply Review</title>
   <style>
+    /* ── CareyBot shared look (inlined on every internal tool page) ── */
     :root {
-      --bg: #0f1419; --panel: #1a2029; --border: #2a3340; --text: #e6edf3;
-      --muted: #8b98a5; --user: #58a6ff; --bot: #3fb950;
-      --pass: #3fb950; --fail: #f85149; --warn: #d29922; --neutral: #6e7681;
+      color-scheme: light;
+      --bg: #f3f6f5; --panel: #ffffff; --border: #dbe3e0; --border-strong: #c2cec9;
+      --text: #24322c; --muted: #5d6d66;
+      --accent: #2e7466; --accent-strong: #235a4f; --accent-soft: #e4efec;
+      --user: #1d5fa8; --bot: #2e7466;
+      --pass: #1a7f4b; --fail: #b42331; --warn: #8a5a00; --neutral: #5d6d66;
+      --pass-bg: #dcefe4; --fail-bg: #f9dee1; --warn-bg: #f7ecd2; --neutral-bg: #e7ebe9;
+      --shadow: 0 1px 2px rgba(30,45,40,.06), 0 1px 1px rgba(30,45,40,.04);
     }
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0; background: var(--bg); color: var(--text); font-size: 14px; }
-    header { position: sticky; top: 0; z-index: 10; background: var(--panel);
-      border-bottom: 1px solid var(--border); padding: 12px 20px;
-      display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
-    .nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 6px;
-      border: 1px solid var(--border); font-size: 13px; }
-    .nav a.active { color: var(--text); border-color: var(--user); }
-    .spacer { margin-left: auto; }
-    button { background: var(--bg); color: var(--text); border: 1px solid var(--border);
-      border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
-    button:hover { border-color: var(--user); }
-    main { padding: 20px; max-width: 900px; margin: 0 auto; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.55; }
     .muted { color: var(--muted); }
-    .mono { font-family: ui-monospace, Menlo, monospace; }
-    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-      padding: 16px; margin-bottom: 16px; }
-    .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
-      color: var(--muted); margin: 0 0 10px; border: none; padding: 0; }
-    .bubble { margin: 6px 0; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
-      padding: 8px 12px; border-radius: 10px; max-width: 85%; }
-    .bubble.youth { background: #1f3a5f; margin-left: auto; }
-    .bubble.carey { background: #143a22; }
-    .reply { background: #143a22; border: 2px solid var(--bot); border-radius: 10px;
-      padding: 14px 16px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
-      font-size: 15px; }
-    .dim { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
-      padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .mono { font-family: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace; font-size: .92em; }
+    /* header */
+    header { position: sticky; top: 0; z-index: 10; background: var(--panel);
+      border-bottom: 1px solid var(--border); padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand-mark { width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex: none; }
+    .brand-text h1 { font-size: 15px; margin: 0; font-weight: 650; line-height: 1.2; }
+    .brand-sub { font-size: 11px; color: var(--muted); display: block; }
+    .nav { display: flex; gap: 4px; flex-wrap: wrap; }
+    .nav a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 999px;
+      font-size: 13px; border: 1px solid transparent; }
+    .nav a:hover { background: var(--accent-soft); color: var(--accent-strong); }
+    .nav a.active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600;
+      border-color: #c8ded8; }
+    .spacer { margin-left: auto; }
+    button { background: var(--panel); color: var(--text); border: 1px solid var(--border-strong);
+      border-radius: 7px; padding: 8px 14px; font-size: 14px; cursor: pointer; font-family: inherit; }
+    button:hover { border-color: var(--accent); color: var(--accent-strong); }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    #progress { background: var(--accent-soft); color: var(--accent-strong); border-radius: 999px;
+      padding: 4px 12px; font-size: 12px; font-weight: 600; white-space: nowrap;
+      font-variant-numeric: tabular-nums; }
+    #progress:empty { display: none; }
+    .toggle { font-size: 13px; display: flex; align-items: center; gap: 5px; }
+    main { padding: 20px; max-width: 860px; margin: 0 auto; }
+    /* cards */
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 16px 18px; margin-bottom: 16px; box-shadow: var(--shadow); }
+    .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em;
+      color: var(--muted); margin: 0 0 10px; border: none; padding: 0; font-weight: 650; }
+    /* conversation excerpt */
+    .bubble { margin: 8px 0; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+      padding: 10px 14px; border-radius: 12px; max-width: 88%; border: 1px solid var(--border); font-size: 15px; }
+    .bubble.youth { background: #e8eff9; border-color: #d3e0f2; margin-left: auto; }
+    .bubble.carey { background: var(--accent-soft); border-color: #cfe2dd; }
+    .bubble b { font-size: 12px; color: var(--muted); font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
+    /* the reply under review */
+    .reply { background: var(--accent-soft); border: 2px solid var(--accent); border-radius: 12px;
+      padding: 14px 16px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+      font-size: 16px; }
+    /* rubric rows */
+    .dim { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+      padding: 14px 0; border-bottom: 1px solid var(--border); }
     .dim:last-child { border-bottom: none; }
-    .dim .label { font-weight: 600; }
-    .dim .q { color: var(--muted); font-size: 12px; margin-top: 2px; }
-    .opts { display: flex; gap: 6px; }
-    .opt { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
-      background: var(--bg); cursor: pointer; font-size: 13px; }
-    .opt.sel[data-v="pass"], .opt.sel[data-v="good"] { background: var(--pass); color: #04260f; border-color: var(--pass); font-weight: 700; }
-    .opt.sel[data-v="fail"], .opt.sel[data-v="bad"] { background: var(--fail); color: #2a0608; border-color: var(--fail); font-weight: 700; }
+    .dim .label { font-weight: 650; font-size: 15px; }
+    .dim .q { color: var(--muted); font-size: 13px; margin-top: 2px; }
+    .opts { display: flex; gap: 8px; flex-wrap: wrap; }
+    .opt { padding: 10px 18px; min-height: 44px; border-radius: 8px; border: 1px solid var(--border-strong);
+      background: var(--panel); cursor: pointer; font-size: 14px; font-weight: 500; }
+    .opt:hover { border-color: var(--accent); }
+    .opt.sel[data-v="pass"], .opt.sel[data-v="good"] { background: var(--pass); color: #fff; border-color: var(--pass); font-weight: 700; }
+    .opt.sel[data-v="fail"], .opt.sel[data-v="bad"] { background: var(--fail); color: #fff; border-color: var(--fail); font-weight: 700; }
     .opt.sel[data-v="na"] { background: var(--neutral); color: #fff; border-color: var(--neutral); font-weight: 700; }
-    .opt.sel[data-v="borderline"] { background: var(--warn); color: #2a1d00; border-color: var(--warn); font-weight: 700; }
+    .opt.sel[data-v="borderline"] { background: var(--warn); color: #fff; border-color: var(--warn); font-weight: 700; }
     .proposal { font-size: 12px; color: var(--muted); margin-left: 8px; }
-    textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
-      border-radius: 6px; padding: 10px; font-family: inherit; font-size: 13px; resize: vertical; min-height: 64px; }
-    .actions { display: flex; gap: 10px; align-items: center; }
-    .actions .primary { background: var(--user); color: #04101f; border: none; font-weight: 700; padding: 10px 20px; }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
-    .pill.crit { background: var(--fail); color: #2a0608; }
-    .gate { max-width: 420px; margin: 80px auto; background: var(--panel); border: 1px solid var(--border);
-      border-radius: 10px; padding: 28px; }
-    .gate input { width: 100%; margin: 12px 0; padding: 10px; background: var(--bg); color: var(--text);
-      border: 1px solid var(--border); border-radius: 6px; }
-    .gate button { width: 100%; background: var(--user); color: #04101f; border: none; font-weight: 600; padding: 10px; }
+    textarea { width: 100%; background: var(--panel); color: var(--text); border: 1px solid var(--border-strong);
+      border-radius: 8px; padding: 12px; font-family: inherit; font-size: 15px; resize: vertical; min-height: 72px; }
+    /* action bar — sticky so Save is always in reach */
+    .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+      position: sticky; bottom: 10px; box-shadow: 0 4px 18px rgba(30,45,40,.14); }
+    .actions .primary { background: var(--accent); color: #fff; border: none; font-weight: 700;
+      padding: 12px 26px; min-height: 46px; font-size: 15px; border-radius: 8px; }
+    .actions .primary:hover { background: var(--accent-strong); color: #fff; }
+    .actions .primary:disabled { opacity: .6; cursor: default; }
+    .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .pill.crit { background: var(--fail-bg); color: var(--fail); }
+    kbd { background: var(--bg); border: 1px solid var(--border-strong); border-radius: 4px;
+      padding: 1px 5px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; }
+    /* token gate */
+    .gate { max-width: 420px; margin: 9vh auto 0; padding: 0 16px; }
+    .gate-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      padding: 30px 28px; box-shadow: var(--shadow); text-align: center; }
+    .gate-card .brand-mark { margin: 0 auto 12px; width: 44px; height: 44px; font-size: 20px; border-radius: 12px; }
+    .gate-card h2 { font-size: 19px; margin: 0 0 6px; color: var(--text); }
+    .gate-card p { margin: 0 0 14px; }
+    .gate-card input { width: 100%; margin: 4px 0 12px; padding: 12px; background: var(--panel);
+      color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; font-size: 15px; }
+    .gate-card button { width: 100%; background: var(--accent); color: #fff; border: none;
+      font-weight: 600; padding: 12px; font-size: 15px; border-radius: 8px; }
+    .gate-card button:hover { background: var(--accent-strong); color: #fff; }
+    .gate-err { color: var(--fail); min-height: 18px; font-size: 13px; margin: 10px 0 0; }
+    .gate-hint { font-size: 12px; margin-top: 12px; }
     .hidden { display: none; }
-    kbd { background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
-      padding: 1px 5px; font-size: 11px; font-family: ui-monospace, monospace; }
-    .toggle { font-size: 12px; }
+    .err-text { color: var(--fail); font-size: 13px; }
+    @media (max-width: 720px) {
+      header { padding: 10px 14px; gap: 10px; }
+      main { padding: 12px; }
+      .card { padding: 14px; border-radius: 10px; }
+      .dim { grid-template-columns: 1fr; gap: 8px; }
+      .opts { width: 100%; }
+      .opt { flex: 1 1 auto; text-align: center; }
+      .bubble { max-width: 100%; }
+      .hotkeys { display: none; }
+      .actions { bottom: 8px; }
+      .gate { margin-top: 5vh; }
+    }
   </style>
 </head>
 <body>
   <div id="gate" class="gate">
-    <h2 style="color:var(--text);margin-top:0">Reply Review</h2>
-    <p class="muted">Enter your personal reviewer token.</p>
-    <input id="tokenInput" type="password" placeholder="Reviewer token" />
-    <button id="tokenBtn">Start reviewing</button>
-    <p id="gateErr" style="color:var(--fail);min-height:18px"></p>
+    <div class="gate-card">
+      <div class="brand-mark" aria-hidden="true">C</div>
+      <h2>Reply Review</h2>
+      <p class="muted">Welcome! This is where Care Corner INSIGHT reviewers rate CareyBot's replies. Enter your personal reviewer token to see your queue.</p>
+      <input id="tokenInput" type="password" placeholder="Reviewer token" autocomplete="off" />
+      <button id="tokenBtn">Start reviewing</button>
+      <p id="gateErr" class="gate-err"></p>
+      <p class="gate-hint muted">Don't have a token? Ask the CareyBot project team.</p>
+    </div>
   </div>
 
   <div id="app" class="hidden">
     <header>
-      <h1>CareyBot — Reply Review</h1>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">C</div>
+        <div class="brand-text">
+          <h1>Reply Review</h1>
+          <span class="brand-sub">CareyBot · Care Corner INSIGHT</span>
+        </div>
+      </div>
       <nav class="nav">
         <a id="navLog" href="#">Live Log</a>
-        <a id="navEval" href="#">Eval Dashboard</a>
+        <a id="navEval" href="#">Evals</a>
         <a class="active" href="#">Review</a>
         <a id="navAgreement" href="label-dashboard.html">Agreement</a>
       </nav>
       <div class="spacer"></div>
       <label class="toggle muted"><input type="checkbox" id="blindToggle" /> Blind mode</label>
-      <span id="progress" class="muted"></span>
+      <span id="progress"></span>
     </header>
-    <main id="main"><p class="muted">Loading…</p></main>
+    <main id="main"><p class="muted">Loading your review queue…</p></main>
   </div>
 
   <script>
@@ -125,14 +188,14 @@
           })
           .catch(function (e) {
             if (e.message === 'unauthorized') { showGate('Token not recognised.'); return; }
-            el('main').innerHTML = '<p style="color:var(--fail)">Error: ' + esc(e.message) + '</p>';
+            el('main').innerHTML = '<p class="err-text">Error: ' + esc(e.message) + '</p>';
           });
       }
 
       function render() {
         var m = el('main');
         if (idx >= queue.length) {
-          m.innerHTML = '<div class="card"><h2>All done</h2><p>No more replies in your queue.</p>' +
+          m.innerHTML = '<div class="card"><h2>All done</h2><p>Nice work — there are no more replies waiting in your queue.</p>' +
             '<p class="muted">You have labelled ' + (stats.labelledByMe || 0) + ' of ' + (stats.corpus || 0) +
             ' replies in the corpus. Run the judge script to ingest more.</p>' +
             '<button onclick="location.reload()">Reload queue</button></div>';
@@ -191,9 +254,9 @@
           '<div class="card actions">' +
             '<button class="primary" id="saveBtn">Save &amp; next</button>' +
             '<button id="skipBtn">Skip</button>' +
-            '<span class="muted" style="font-size:12px">' +
+            '<span class="muted hotkeys" style="font-size:12px">' +
               '<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> overall · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> save</span>' +
-            '<span class="spacer"></span><span id="err" style="color:var(--fail)"></span>' +
+            '<span class="spacer"></span><span id="err" class="err-text"></span>' +
           '</div>';
 
         paint();

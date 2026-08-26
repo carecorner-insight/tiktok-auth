@@ -5,79 +5,128 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CareyBot — Judge Agreement</title>
   <style>
+    /* ── CareyBot shared look (inlined on every internal tool page) ── */
     :root {
-      --bg: #0f1419; --panel: #1a2029; --border: #2a3340; --text: #e6edf3;
-      --muted: #8b98a5; --user: #58a6ff;
-      --pass: #3fb950; --fail: #f85149; --warn: #d29922; --neutral: #6e7681;
+      color-scheme: light;
+      --bg: #f3f6f5; --panel: #ffffff; --border: #dbe3e0; --border-strong: #c2cec9;
+      --text: #24322c; --muted: #5d6d66;
+      --accent: #2e7466; --accent-strong: #235a4f; --accent-soft: #e4efec;
+      --user: #1d5fa8;
+      --pass: #1a7f4b; --fail: #b42331; --warn: #8a5a00; --neutral: #5d6d66;
+      --pass-bg: #dcefe4; --fail-bg: #f9dee1; --warn-bg: #f7ecd2; --neutral-bg: #e7ebe9;
+      --zebra: #f7faf9;
+      --shadow: 0 1px 2px rgba(30,45,40,.06), 0 1px 1px rgba(30,45,40,.04);
     }
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0; background: var(--bg); color: var(--text); font-size: 14px; }
-    header { position: sticky; top: 0; z-index: 10; background: var(--panel);
-      border-bottom: 1px solid var(--border); padding: 12px 20px;
-      display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
-    .nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 6px;
-      border: 1px solid var(--border); font-size: 13px; }
-    .nav a.active { color: var(--text); border-color: var(--user); }
-    .nav a:hover { border-color: var(--user); }
-    .spacer { margin-left: auto; }
-    button { background: var(--bg); color: var(--text); border: 1px solid var(--border);
-      border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
-    button:hover { border-color: var(--user); }
-    main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
     .muted { color: var(--muted); }
-    .mono { font-family: ui-monospace, Menlo, monospace; }
-    h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
-      border-bottom: 1px solid var(--border); padding-bottom: 6px; margin: 28px 0 14px; }
+    .mono { font-family: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace; font-size: .92em; }
+    /* header */
+    header { position: sticky; top: 0; z-index: 10; background: var(--panel);
+      border-bottom: 1px solid var(--border); padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand-mark { width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex: none; }
+    .brand-text h1 { font-size: 15px; margin: 0; font-weight: 650; line-height: 1.2; }
+    .brand-sub { font-size: 11px; color: var(--muted); display: block; }
+    .nav { display: flex; gap: 4px; flex-wrap: wrap; }
+    .nav a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 999px;
+      font-size: 13px; border: 1px solid transparent; }
+    .nav a:hover { background: var(--accent-soft); color: var(--accent-strong); }
+    .nav a.active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600;
+      border-color: #c8ded8; }
+    .spacer { margin-left: auto; }
+    button { background: var(--panel); color: var(--text); border: 1px solid var(--border-strong);
+      border-radius: 7px; padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: inherit; }
+    button:hover { border-color: var(--accent); color: var(--accent-strong); }
+    button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+      border-bottom: 1px solid var(--border); padding-bottom: 6px; margin: 28px 0 14px; font-weight: 650; }
+    /* KPIs */
     .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px,1fr)); gap: 12px; }
-    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
-    .kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-    .kpi .value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 14px 16px; box-shadow: var(--shadow); }
+    .kpi .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+    .kpi .value { font-size: 26px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
     .kpi .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .verdict { font-size: 12px; font-weight: 700; margin-top: 6px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    /* tables */
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) td { background: var(--zebra); }
     th { color: var(--muted); font-weight: 600; font-size: 12px; }
     .grid td, .grid th { text-align: center; }
     .grid td.rowhead, .grid th.rowhead { text-align: left; color: var(--muted); }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
-    .pill.good { background: var(--pass); color: #04260f; }
-    .pill.borderline { background: var(--warn); color: #2a1d00; }
-    .pill.bad { background: var(--fail); color: #2a0608; }
-    .pill.crit { background: var(--fail); color: #2a0608; }
-    .pill.pass { background: var(--pass); color: #04260f; }
-    .pill.fail { background: var(--fail); color: #2a0608; }
-    .pill.na { background: var(--neutral); color: #fff; }
-    .diag { background: #20283480; }
-    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
-    .note { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
-    .bar { height: 8px; border-radius: 4px; background: #20283480; overflow: hidden; display: flex; }
+    .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .pill.good { background: var(--pass-bg); color: var(--pass); }
+    .pill.borderline { background: var(--warn-bg); color: var(--warn); }
+    .pill.bad { background: var(--fail-bg); color: var(--fail); }
+    .pill.crit { background: var(--fail-bg); color: var(--fail); }
+    .pill.pass { background: var(--pass-bg); color: var(--pass); }
+    .pill.fail { background: var(--fail-bg); color: var(--fail); }
+    .pill.na { background: var(--neutral-bg); color: var(--neutral); }
+    td.diag { background: var(--fail-bg) !important; font-weight: 700; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 16px; box-shadow: var(--shadow); }
+    .note { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.55; }
+    .bar { height: 10px; border-radius: 5px; background: var(--neutral-bg); overflow: hidden; display: flex; }
     .bar span { display: block; height: 100%; }
-    .gate { max-width: 420px; margin: 80px auto; background: var(--panel); border: 1px solid var(--border);
-      border-radius: 10px; padding: 28px; }
-    .gate input { width: 100%; margin: 12px 0; padding: 10px; background: var(--bg); color: var(--text);
-      border: 1px solid var(--border); border-radius: 6px; }
-    .gate button { width: 100%; background: var(--user); color: #04101f; border: none; font-weight: 600; padding: 10px; }
+    /* token gate */
+    .gate { max-width: 420px; margin: 9vh auto 0; padding: 0 16px; }
+    .gate-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      padding: 30px 28px; box-shadow: var(--shadow); text-align: center; }
+    .gate-card .brand-mark { margin: 0 auto 12px; width: 44px; height: 44px; font-size: 20px; border-radius: 12px; }
+    .gate-card h2 { border: none; color: var(--text); text-transform: none; letter-spacing: 0;
+      font-size: 19px; margin: 0 0 6px; }
+    .gate-card p { margin: 0 0 14px; }
+    .gate-card input { width: 100%; margin: 4px 0 12px; padding: 11px 12px; background: var(--panel);
+      color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; font-size: 14px; }
+    .gate-card button { width: 100%; background: var(--accent); color: #fff; border: none;
+      font-weight: 600; padding: 11px; font-size: 14px; border-radius: 8px; }
+    .gate-card button:hover { background: var(--accent-strong); color: #fff; }
+    .gate-err { color: var(--fail); min-height: 18px; font-size: 13px; margin: 10px 0 0; }
+    .gate-hint { font-size: 12px; margin-top: 12px; }
     .hidden { display: none; }
-    .reply { white-space: pre-wrap; word-break: break-word; max-width: 460px; }
+    .reply { white-space: pre-wrap; word-break: break-word; max-width: 460px; min-width: 220px; }
+    @media (max-width: 720px) {
+      header { padding: 10px 14px; gap: 10px; }
+      main { padding: 14px; }
+      .gate { margin-top: 5vh; }
+    }
   </style>
 </head>
 <body>
   <div id="gate" class="gate hidden">
-    <h2 style="border:none;color:var(--text)">Judge Agreement</h2>
-    <p class="muted">Enter the access token.</p>
-    <input id="tokenInput" type="password" placeholder="Access token" />
-    <button id="tokenBtn">View dashboard</button>
-    <p id="gateErr" style="color:var(--fail);min-height:18px"></p>
+    <div class="gate-card">
+      <div class="brand-mark" aria-hidden="true">C</div>
+      <h2>Judge Agreement</h2>
+      <p class="muted">Internal tool for Care Corner INSIGHT staff. Enter the access token to see how well the automated judge agrees with human reviewers.</p>
+      <input id="tokenInput" type="password" placeholder="Access token" autocomplete="off" />
+      <button id="tokenBtn">View dashboard</button>
+      <p id="gateErr" class="gate-err"></p>
+      <p class="gate-hint muted">Don't have a token? Ask the CareyBot project team.</p>
+    </div>
   </div>
 
   <div id="app" class="hidden">
     <header>
-      <h1>CareyBot — Judge Agreement</h1>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">C</div>
+        <div class="brand-text">
+          <h1>Judge Agreement</h1>
+          <span class="brand-sub">CareyBot · Care Corner INSIGHT</span>
+        </div>
+      </div>
       <nav class="nav">
         <a id="navLog" href="#">Live Log</a>
-        <a id="navEval" href="#">Eval Dashboard</a>
+        <a id="navEval" href="#">Evals</a>
         <a id="navReview" href="#">Review</a>
         <a class="active" href="#">Agreement</a>
       </nav>
@@ -178,7 +227,7 @@
 
         function disagreementTable(rows, emptyMsg) {
           if (!rows.length) return '<p class="muted">' + emptyMsg + '</p>';
-          return '<table><tr><th>Reply</th><th>Human</th><th>Judge</th><th>Why (human)</th><th>Reviewer</th></tr>' +
+          return '<div class="table-wrap"><table><tr><th>Reply</th><th>Human</th><th>Judge</th><th>Why (human)</th><th>Reviewer</th></tr>' +
             rows.map(function (x) {
               return '<tr><td class="reply">' + esc((x.replyText || '').slice(0, 220)) +
                   '<div class="muted mono" style="font-size:11px">' + esc(x.persona || '') +
@@ -187,7 +236,7 @@
                 '<td>' + (x.llm ? '<span class="pill ' + esc(x.llm.overall) + '">' + esc(x.llm.overall) + '</span>' : '—') + '</td>' +
                 '<td class="muted">' + esc(x.rationale || '') + '</td>' +
                 '<td class="muted">' + esc(x.labelerName || '') + '</td></tr>';
-            }).join('') + '</table>';
+            }).join('') + '</table></div>';
         }
 
         el('main').innerHTML =
@@ -200,17 +249,17 @@
           '</div>' +
 
           '<h2>Overall verdict — human vs judge</h2>' +
-          '<table class="grid">' + mHead + mBody + '</table>' +
+          '<div class="table-wrap"><table class="grid">' + mHead + mBody + '</table></div>' +
           '<p class="note">Off-diagonal cells are disagreements. The top-right corner (human said <b>bad</b>, ' +
           'judge said <b>good</b>) is the cell to watch.</p>' +
 
           '<h2>Judge bias direction</h2>' + barHtml +
 
           '<h2>Per-dimension agreement</h2>' +
-          '<table><tr><th>Dimension</th><th>κ</th><th>Agreement</th><th>Reading</th><th>n</th></tr>' + dimRows + '</table>' +
+          '<div class="table-wrap"><table><tr><th>Dimension</th><th>κ</th><th>Agreement</th><th>Reading</th><th>n</th></tr>' + dimRows + '</table></div>' +
 
           '<h2>Judge accuracy by prompt version</h2>' +
-          '<table><tr><th>Version</th><th>κ</th><th>Agreement</th><th>n</th></tr>' + verRows + '</table>' +
+          '<div class="table-wrap"><table><tr><th>Version</th><th>κ</th><th>Agreement</th><th>n</th></tr>' + verRows + '</table></div>' +
           '<p class="note">Bump <span class="mono">JUDGE_VERSION</span> whenever the rubric changes, so this ' +
           'table shows whether a prompt edit actually improved the judge.</p>' +
 
