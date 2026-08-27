@@ -19,6 +19,7 @@ import type { Platform } from '../src/types/state';
 import { pushUatLog, providerFromChatId } from '../src/lib/uatLog';
 import { getMenuMode, type MenuMode } from '../src/lib/menuMode';
 import { getStoredAge, setStoredAge } from '../src/lib/ageStore';
+import { loadLiveCoachPrompt } from '../src/lib/promptStore';
 
 export const config = { runtime: 'nodejs', maxDuration: 60 };
 
@@ -146,8 +147,12 @@ export async function handleMessage(
       aiBots: makeCareyAIClient(),
       // Growing We social coach. Direct Qwen by default (holds our own prompt
       // + the [CRISIS]/[REFERRAL] tag contract); COACH_PROVIDER=aibots switches
-      // to the seeded Directus bot with its Dify fallback.
-      socialCoach: makeSocialCoachClient(),
+      // to the seeded Directus bot with its Dify fallback. An admin-published
+      // prompt from the prompt store wins over the bundled one; any store
+      // problem falls back to bundled (loadLiveCoachPrompt never throws). The
+      // study endpoint forces DYNAMIC_COACH_PROMPT=false, so it always gets
+      // the bundled prompt.
+      socialCoach: makeSocialCoachClient((await loadLiveCoachPrompt(redis))?.prompt),
       // Intent classification for the open-ended post-screener entry — a
       // direct OpenAI-compatible call (single-token output, no AIBots session).
       intentLLM: new DirectLLMClient({

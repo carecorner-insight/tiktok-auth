@@ -33,7 +33,13 @@ export function coachProvider(): CoachProvider {
  * Directus platform — it is not sent from here. Keep the two in sync or the
  * crisis/referral handoffs silently stop working on that provider.
  */
-export function makeSocialCoachClient(): CareyAIClient {
+/**
+ * @param systemPromptOverride an admin-published prompt from the prompt store
+ *   (already assembled with the tag contract). Direct provider only — on the
+ *   aibots path the prompt is seeded on the Directus platform and this is
+ *   ignored.
+ */
+export function makeSocialCoachClient(systemPromptOverride?: string): CareyAIClient {
   if (coachProvider() === 'aibots') {
     console.log('[ai] social coach using AIBots (Directus) with Dify fallback');
     return new FallbackAIClient(
@@ -54,6 +60,6 @@ export function makeSocialCoachClient(): CareyAIClient {
     apiKey: process.env.QWEN_API_KEY ?? '',
     baseURL: process.env.QWEN_BASE_URL ?? DEFAULT_QWEN_BASE_URL,
     model,
-    systemPrompt: SOCIAL_COACH_PROMPT,
+    systemPrompt: systemPromptOverride ?? SOCIAL_COACH_PROMPT,
   });
 }

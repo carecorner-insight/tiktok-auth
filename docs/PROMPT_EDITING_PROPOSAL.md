@@ -1,7 +1,16 @@
 # Letting the Team Edit the Coach Prompt Safely — Proposal
 
-**Date:** 26 Aug 2026 · **Status:** proposal, not yet implemented
+**Date:** 26 Aug 2026 · **Status:** DECIDED — see below
 **Problem owner:** dev · **Decision needed from:** project lead
+
+> **Decision (27 Aug 2026):** the team chose a **password-gated web editor** — a
+> hardened variant of Option C, accepting instant publish over a CI gate, with
+> the guardrails enforced in code (tag contract appended at load, length
+> validation, versioned history with restore, bundled-prompt fallback, study
+> bot excluded via `DYNAMIC_COACH_PROMPT=false`). Implemented as
+> `public/prompt-editor.html` + `api/prompt-admin.ts` + `src/lib/promptStore.ts`.
+> Model-behaviour dials and A/B variants are planned follow-ups on the same
+> store. The analysis below is kept for the record.
 
 ## What went wrong last week (the motivating incident)
 

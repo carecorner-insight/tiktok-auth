@@ -103,6 +103,7 @@ api/                  ⚠️ every file here is one Vercel serverless function �
   webhook.ts          Live entry point (Telegram/TikTok). Fire-and-forget: 200 immediately, process in background.
   webhook-study.ts    Same handler forced into the NUS-study configuration (study flags, own bot token, study: Redis prefix).
   sim.ts              Synchronous sim endpoint — runs the real graph, returns the reply. Token-gated.
+  prompt-admin.ts     Coach-prompt publishing API for public/prompt-editor.html (PROMPT_ADMIN_TOKEN).
   eval-results.ts     Eval results: POST (dual-write Redis+SharePoint), GET (read for dashboard).
   uat-logs.ts         UAT live-log: GET (read), POST (toggle capture / switch menu mode).
   label-queue.ts      Labelling: GET review queue (labeler token), POST ingest units (SIM_TOKEN).
@@ -292,6 +293,8 @@ Power Automate → SharePoint "Reviewers" list → cache → compare locally
 | `STUDY_POWER_AUTOMATE_WEBHOOK_URL` | Separate conversation-log list for the study bot (falls back to the shared one) |
 | `STUDY_MENU_MODE` | Study endpoint entry UX (`numbered` default / `intent`) |
 | `STUDY_SCREENER_ENABLED` etc. | Per-flag overrides of the forced study configuration (see `src/lib/studyMode.ts`) |
+| `PROMPT_ADMIN_TOKEN` | Password for the prompt editor page/API (unset → editor disabled, 503) |
+| `DYNAMIC_COACH_PROMPT` | `false` disables admin-published prompts (study endpoint forces this; pivot default on) |
 | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | TikTok token cron |
 | `SHAREPOINT_WHITELIST_WEBHOOK_URL` | RBAC whitelist lookup (Power Automate) |
 | `POWER_AUTOMATE_WEBHOOK_URL` | Conversation log |
@@ -330,6 +333,9 @@ Node isn't required in prod (Vercel builds it); local dev needs Node ≥ 20.
 ## Change log
 
 Newest first. Anything marked **uncommitted** exists in the working tree but is not yet in git.
+
+### No-deploy prompt editing — *committed (Aug 27)*
+`public/prompt-editor.html` + `api/prompt-admin.ts` + `src/lib/promptStore.ts`: the team publishes coach-prompt changes from a password-gated page (`PROMPT_ADMIN_TOKEN`), live within a minute. Guardrails in code: the `[CRISIS]`/`[REFERRAL]` tag contract is appended at load whenever the saved text lacks one, length validation on save *and* load, versioned history (last 20) with restore, and full fallback to the bundled prompt on any store problem. The study endpoint forces `DYNAMIC_COACH_PROMPT=false`, so the frozen bot never sees a dynamic prompt. Direct provider only — on `COACH_PROVIDER=aibots` the prompt is platform-side (the page warns). Groundwork for model dials + prompt A/B in the same store. See `docs/PROMPT_EDITING_PROPOSAL.md` for the decision record.
 
 ### Outcome measurement (Developer Briefing) — *in progress, uncommitted*
 Structured outcome events reported by the coach via a `[DATA {...}]` tag: parser/validator (`src/lib/outcomeEvents.ts`), persistent confidence + session-count store (`src/lib/outcomeStore.ts`), dedicated SharePoint writer (`src/services/outcomeLogger.ts`), plus KPI fields in the conversation log. **Built and unit-tested but not yet wired** — see `docs/OUTCOME_METRICS_REVIEW.md` and `docs/OUTCOME_METRICS_IMPROVEMENTS.md` for the plan (schema fixes land before wiring).

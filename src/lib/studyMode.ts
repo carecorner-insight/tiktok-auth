@@ -24,6 +24,9 @@ export const STUDY_ENV_DEFAULTS: Record<string, string> = {
   // Carey answers via AIBots (Directus) with Dify fallback — the study's
   // PDPA-cleared provider — not the direct Qwen client.
   USE_DIRECT_LLM: 'false',
+  // The frozen study bot must never pick up an admin-published coach prompt
+  // from the prompt store (public/prompt-editor.html) — bundled prompt only.
+  DYNAMIC_COACH_PROMPT: 'false',
 };
 
 export function applyStudyEnv(env: NodeJS.ProcessEnv = process.env): void {

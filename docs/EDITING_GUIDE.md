@@ -37,6 +37,31 @@ section below says which bot it touches.
 
 ---
 
+## 0. ✨ The easy way — the Prompt Editor page
+
+**Page:** `https://tiktok-auth-topaz.vercel.app/prompt-editor.html`
+**Affects:** CareyChats only (the study bot always uses the built-in prompt)
+
+You no longer need to edit code files to change the coach's instructions. Open
+the page, enter the **prompt admin password** (ask the project lead), edit the
+prompt in plain English, add a short label and your name, and **Publish** —
+the live bot picks it up within about a minute.
+
+- Every publish is kept in the **version history** on the page. To roll back,
+  press *Load* on an earlier version, then Publish it again.
+- You cannot break the safety machinery from this page: the `[CRISIS]` /
+  `[REFER]` response tags are enforced by the system automatically.
+- After publishing, **message the bot** to check the change reads the way you
+  intended.
+- The password publishes straight to production — treat it like a key to the
+  bot's mouth. Don't share it outside the approved editors.
+
+Everything below about `socialCoachPrompt.ts` remains true but is now the
+**developer fallback** — the file is what the bot uses when no version has been
+published on the page.
+
+---
+
 ## 1. The coach's personality and coaching style
 
 **File:** `src/config/socialCoachPrompt.ts`

@@ -42,6 +42,7 @@ describe('applyStudyEnv', () => {
     expect(Object.keys(STUDY_ENV_DEFAULTS).sort()).toEqual([
       'AUTH_ENABLED',
       'CRISIS_STATIC_FIRST',
+      'DYNAMIC_COACH_PROMPT',
       'SCENARIO_MENU',
       'SCREENER_ENABLED',
       'USE_DIRECT_LLM',

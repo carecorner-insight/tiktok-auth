@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CareyBot — Prompt Editor</title>
+  <style>
+    /* ── CareyBot shared look (inlined on every internal tool page) ── */
+    :root {
+      color-scheme: light;
+      --bg: #f3f6f5; --panel: #ffffff; --border: #dbe3e0; --border-strong: #c2cec9;
+      --text: #24322c; --muted: #5d6d66;
+      --accent: #2e7466; --accent-strong: #235a4f; --accent-soft: #e4efec;
+      --pass: #1a7f4b; --fail: #b42331; --warn: #8a5a00;
+      --pass-bg: #dcefe4; --fail-bg: #f9dee1; --warn-bg: #f7ecd2;
+      --shadow: 0 1px 2px rgba(30,45,40,.06), 0 1px 1px rgba(30,45,40,.04);
+    }
+    * { box-sizing: border-box; }
+    body { font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.55; }
+    .muted { color: var(--muted); }
+    .mono { font-family: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace; font-size: .92em; }
+    header { position: sticky; top: 0; z-index: 10; background: var(--panel);
+      border-bottom: 1px solid var(--border); padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-mark { width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex: none; }
+    .brand-text h1 { font-size: 15px; margin: 0; font-weight: 650; line-height: 1.2; }
+    .brand-sub { font-size: 11px; color: var(--muted); display: block; }
+    .nav { display: flex; gap: 4px; flex-wrap: wrap; }
+    .nav a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 999px;
+      font-size: 13px; border: 1px solid transparent; }
+    .nav a:hover { background: var(--accent-soft); color: var(--accent-strong); }
+    .nav a.active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; border-color: #c8ded8; }
+    main { padding: 20px; max-width: 900px; margin: 0 auto; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 16px 18px; margin-bottom: 16px; box-shadow: var(--shadow); }
+    .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em;
+      color: var(--muted); margin: 0 0 10px; font-weight: 650; }
+    button { background: var(--panel); color: var(--text); border: 1px solid var(--border-strong);
+      border-radius: 7px; padding: 9px 16px; font-size: 14px; cursor: pointer; font-family: inherit; }
+    button:hover { border-color: var(--accent); color: var(--accent-strong); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    button.primary:hover { background: var(--accent-strong); color: #fff; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    input[type=text], input[type=password], textarea { width: 100%; border: 1px solid var(--border-strong);
+      border-radius: 7px; padding: 9px 12px; font-size: 14px; font-family: inherit; background: #fff; color: var(--text); }
+    textarea#promptText { font-family: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+      font-size: 13px; line-height: 1.5; min-height: 420px; resize: vertical; white-space: pre; overflow-x: auto; }
+    label { font-size: 13px; font-weight: 600; display: block; margin: 12px 0 4px; }
+    .pill { display: inline-block; border-radius: 999px; padding: 3px 11px; font-size: 12px; font-weight: 600; }
+    .pill.ok { background: var(--pass-bg); color: var(--pass); }
+    .pill.warn { background: var(--warn-bg); color: var(--warn); }
+    .pill.bad { background: var(--fail-bg); color: var(--fail); }
+    .notice { border-radius: 9px; padding: 10px 14px; font-size: 13.5px; margin: 12px 0; border: 1px solid; }
+    .notice.ok { background: var(--pass-bg); border-color: #bfe0cd; color: #14603a; }
+    .notice.warn { background: var(--warn-bg); border-color: #ecd9a8; color: #6d4700; }
+    .notice.bad { background: var(--fail-bg); border-color: #eec2c7; color: #8f1c27; }
+    .row { display: flex; gap: 14px; flex-wrap: wrap; }
+    .row > div { flex: 1 1 220px; }
+    .gate { max-width: 460px; margin: 60px auto; text-align: center; }
+    .gate p { color: var(--muted); font-size: 14px; }
+    #meta { font-size: 13.5px; }
+    #meta b { font-variant-numeric: tabular-nums; }
+    table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+    th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    tr:nth-child(even) td { background: #fafcfb; }
+    td .mini { font-size: 12px; padding: 4px 10px; }
+    #charCount { font-variant-numeric: tabular-nums; }
+    .table-wrap { overflow-x: auto; }
+    footer-note, .foot { display:block; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-mark">C</div>
+      <div class="brand-text">
+        <h1>Prompt Editor</h1>
+        <span class="brand-sub">CareyBot · Care Corner INSIGHT</span>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="uat-logs.html">Live Log</a>
+      <a href="eval-dashboard.html">Evals</a>
+      <a href="label.html">Review</a>
+      <a href="label-dashboard.html">Agreement</a>
+      <a class="active" href="prompt-editor.html">Prompt</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- token gate -->
+    <div id="gate" class="card gate">
+      <h2>Coach prompt editor</h2>
+      <p>This page publishes changes to the live coach's instructions — what the bot
+        says to real users. You need the <b>prompt admin password</b>; ask the project
+        lead if you should have it.</p>
+      <input type="password" id="tokenInput" placeholder="Paste the admin password" autocomplete="off" />
+      <p><button class="primary" id="enterBtn">Open editor</button></p>
+      <p id="gateErr" class="notice bad" style="display:none"></p>
+    </div>
+
+    <div id="app" style="display:none">
+      <div class="card">
+        <h2>What's live right now</h2>
+        <div id="meta" class="muted">Loading…</div>
+        <div id="providerWarn" class="notice warn" style="display:none">
+          ⚠️ The coach is currently running on the <b>AIBots</b> provider, whose prompt
+          lives on the Directus platform — changes saved here will <b>not</b> reach the
+          model until the provider is switched back to direct mode. You can still
+          prepare and save a version.
+        </div>
+        <div id="dynWarn" class="notice warn" style="display:none">
+          ⚠️ Dynamic prompts are disabled on this deployment (<span class="mono">DYNAMIC_COACH_PROMPT=false</span>) —
+          saved versions are stored but the bot keeps using the built-in prompt.
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Edit the prompt</h2>
+        <p class="muted" style="font-size:13.5px;margin-top:0">
+          Write in plain English, as if instructing a new staff member. Safety machinery is
+          handled for you: if your text doesn't include the <span class="mono">[CRISIS]</span> /
+          <span class="mono">[REFER]</span> response-tag rules, the system appends the standard
+          ones automatically — you cannot switch crisis detection off from here.
+        </p>
+        <textarea id="promptText" spellcheck="false" placeholder="Loading current prompt…"></textarea>
+        <span class="foot"><span id="charCount">0</span> characters · <span id="tagNotice"></span></span>
+
+        <div class="row">
+          <div>
+            <label for="labelInput">Version label <span class="muted">(what changed, a few words)</span></label>
+            <input type="text" id="labelInput" maxlength="120" placeholder="e.g. softer opening, shorter scripts" />
+          </div>
+          <div>
+            <label for="editorInput">Your name</label>
+            <input type="text" id="editorInput" maxlength="80" placeholder="so versions show who published them" />
+          </div>
+        </div>
+
+        <p style="margin-top:16px">
+          <button class="primary" id="saveBtn">Publish to the live bot</button>
+          <span class="foot">Goes live for real users within about a minute of saving. Every save is kept in the history below — you can always restore an earlier version.</span>
+        </p>
+        <div id="saveMsg" style="display:none" class="notice"></div>
+      </div>
+
+      <div class="card">
+        <h2>Version history</h2>
+        <div class="table-wrap">
+          <table id="historyTable" style="display:none">
+            <thead><tr><th>v</th><th>Label</th><th>Published by</th><th>When</th><th></th></tr></thead>
+            <tbody id="historyBody"></tbody>
+          </table>
+        </div>
+        <p id="historyEmpty" class="muted" style="font-size:13.5px">No versions published yet — the bot is using the built-in prompt.</p>
+        <span class="foot">“Load” puts that version's text into the editor above; nothing changes until you publish it (which creates a new version — history is never overwritten).</span>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    var API = 'api/prompt-admin';
+    var token = sessionStorage.getItem('promptAdminToken') || '';
+    var limits = { min: 500, max: 60000 };
+    var state = { live: null, history: [] };
+
+    function $(id) { return document.getElementById(id); }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      var d = new Date(iso);
+      return isNaN(d) ? '—' : d.toLocaleString('en-SG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+    function definesTags(text) { return /\[\s*CRISIS\s*\]/i.test(text); }
+
+    function updateCounter() {
+      var text = $('promptText').value;
+      $('charCount').textContent = text.trim().length.toLocaleString();
+      var n = $('tagNotice');
+      if (definesTags(text)) {
+        n.textContent = 'your text defines its own safety tags — used as-is';
+      } else {
+        n.textContent = 'standard safety tags will be appended automatically';
+      }
+      var len = text.trim().length;
+      $('charCount').style.color = (len < limits.min || len > limits.max) ? 'var(--fail)' : '';
+    }
+
+    function renderMeta(data) {
+      var m = $('meta');
+      if (data.live) {
+        m.innerHTML = 'Serving <span class="pill ok">custom v' + esc(data.live.version) + '</span> ' +
+          '“' + esc(data.live.label) + '” — published by <b>' + esc(data.live.editor || 'unknown') + '</b> ' +
+          'on ' + esc(fmtDate(data.live.savedAt)) + '.';
+      } else {
+        m.innerHTML = 'Serving the <span class="pill warn">built-in prompt</span> that ships with the code ' +
+          '(' + Number(data.bundled.chars).toLocaleString() + ' characters). Publishing here replaces it.';
+      }
+      $('providerWarn').style.display = data.provider === 'aibots' ? '' : 'none';
+      $('dynWarn').style.display = data.dynamicEnabled ? 'none' : '';
+    }
+
+    function renderHistory() {
+      var body = $('historyBody');
+      body.innerHTML = '';
+      if (!state.history.length) {
+        $('historyTable').style.display = 'none';
+        $('historyEmpty').style.display = '';
+        return;
+      }
+      $('historyTable').style.display = '';
+      $('historyEmpty').style.display = 'none';
+      state.history.forEach(function (h, i) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td class="mono">v' + esc(h.version) + '</td>' +
+          '<td>' + esc(h.label || '—') + '</td>' +
+          '<td>' + esc(h.editor || '—') + '</td>' +
+          '<td>' + esc(fmtDate(h.savedAt)) + '</td>' +
+          '<td><button class="mini" data-i="' + i + '">Load</button></td>';
+        tr.querySelector('button').addEventListener('click', function () {
+          $('promptText').value = state.history[i].text;
+          $('labelInput').value = 'restore v' + state.history[i].version + ' (' + (state.history[i].label || '') + ')';
+          updateCounter();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          showMsg('warn', 'Loaded v' + state.history[i].version + ' into the editor. Nothing is live until you publish.');
+        });
+        body.appendChild(tr);
+      });
+    }
+
+    function showMsg(kind, text) {
+      var el = $('saveMsg');
+      el.className = 'notice ' + kind;
+      el.textContent = text;
+      el.style.display = '';
+    }
+
+    function load() {
+      fetch(API + '?token=' + encodeURIComponent(token))
+        .then(function (r) { if (!r.ok) throw r; return r.json(); })
+        .then(function (data) {
+          limits = data.limits || limits;
+          state.live = data.live;
+          state.history = data.history || [];
+          $('gate').style.display = 'none';
+          $('app').style.display = '';
+          renderMeta(data);
+          renderHistory();
+          $('promptText').value = data.live ? data.live.text : (data.bundled.text || '');
+          updateCounter();
+        })
+        .catch(function (r) {
+          sessionStorage.removeItem('promptAdminToken');
+          var e = $('gateErr');
+          e.style.display = '';
+          e.textContent = (r && r.status === 503)
+            ? 'The editor is not enabled on this deployment (no admin password configured).'
+            : 'That password was not accepted. Check it and try again.';
+        });
+    }
+
+    $('enterBtn').addEventListener('click', function () {
+      token = $('tokenInput').value.trim();
+      if (!token) return;
+      sessionStorage.setItem('promptAdminToken', token);
+      load();
+    });
+    $('tokenInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('enterBtn').click(); });
+    $('promptText').addEventListener('input', updateCounter);
+
+    $('saveBtn').addEventListener('click', function () {
+      var text = $('promptText').value;
+      var label = $('labelInput').value.trim();
+      var editor = $('editorInput').value.trim();
+      if (!label) return showMsg('bad', 'Add a short version label first — it is how the team finds this change later.');
+      if (!editor) return showMsg('bad', 'Add your name — every version records who published it.');
+      var len = text.trim().length;
+      if (len < limits.min) return showMsg('bad', 'The prompt is too short (' + len + ' characters, minimum ' + limits.min + ').');
+      if (len > limits.max) return showMsg('bad', 'The prompt is too long (' + len + ' characters, maximum ' + limits.max + ').');
+      if (!confirm('Publish this prompt to the LIVE bot?\n\nReal users will get replies based on it within about a minute. The current version stays in history and can be restored.')) return;
+
+      $('saveBtn').disabled = true;
+      fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+        body: JSON.stringify({ text: text, label: label, editor: editor }),
+      })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          $('saveBtn').disabled = false;
+          if (!res.ok) return showMsg('bad', res.j.error || 'Save failed.');
+          showMsg('ok', 'Published as v' + res.j.version + '. ' +
+            (res.j.tagContractAppended ? 'Standard safety tags were appended automatically.' : 'Your text defines its own safety tags.') +
+            ' Send the bot a test message to check the change.');
+          $('labelInput').value = '';
+          load();
+        })
+        .catch(function () { $('saveBtn').disabled = false; showMsg('bad', 'Network problem — the save may not have gone through. Reload to check.'); });
+    });
+
+    if (token) load();
+  </script>
+</body>
+</html>
