@@ -4,6 +4,19 @@ A mental-health triage & support chatbot for youths (13–25) in Singapore, oper
 
 > **Authoritative docs:** [`SYS_PROMPT.md`](SYS_PROMPT.md) is the source of truth for Carey's conversational design. ⚠️ [`CLAUDE.md`](CLAUDE.md) is **stale** in places (it describes a PHQ-9 / 9-question design and older menu) — trust the code and `SYS_PROMPT.md` over it.
 
+> **Two bots, one codebase.** The **NUS-study bot** (careytest, frozen until the study completes) and the **CareyChats pivot** (Growing We social coach) both run from this repo. Behaviour is selected per endpoint: `/api/webhook` serves the deployment's env-flag configuration (currently the pivot), while `/api/webhook-study` forces the study configuration ([`src/lib/studyMode.ts`](src/lib/studyMode.ts)) with its own bot token and a `study:`-prefixed Redis namespace ([`src/lib/prefixedRedis.ts`](src/lib/prefixedRedis.ts)). Flags live in [`src/lib/pivotFlags.ts`](src/lib/pivotFlags.ts) and default to study-safe values.
+
+**Team documentation** (in [`docs/`](docs/)):
+
+| Doc | For |
+|---|---|
+| [`EVALUATION_RUNBOOK.md`](docs/EVALUATION_RUNBOOK.md) | **Non-technical reviewers** — how to rate the bot's replies |
+| [`EDITING_GUIDE.md`](docs/EDITING_GUIDE.md) | Non-technical team — where to change the bot's wording safely |
+| [`ACCOUNTS.md`](docs/ACCOUNTS.md) | Accounts & credentials inventory (handover) |
+| [`OUTCOME_METRICS_REVIEW.md`](docs/OUTCOME_METRICS_REVIEW.md) | Review of the outcome metrics' validity + collection design |
+| [`OUTCOME_METRICS_IMPROVEMENTS.md`](docs/OUTCOME_METRICS_IMPROVEMENTS.md) | Concrete fix designs, effort & implementation order |
+| [`PROMPT_EDITING_PROPOSAL.md`](docs/PROMPT_EDITING_PROPOSAL.md) | Proposal: let the team edit the coach prompt without a developer |
+
 **Contents:** [What it does](#what-it-does) · [Conversation flow](#conversation-flow) · [AI providers](#ai-providers) · [Project structure](#project-structure) · [Ops & testing](#ops--testing-tooling) · [**Access control & authentication**](#access-control--authentication) · [Privacy (PDPA)](#data-storage--privacy-pdpa) · [Env vars](#environment-variables) · [Scripts](#scripts) · [**Change log**](#change-log) · [Caveats / TODO](#known-caveats--todo)
 
 ---
@@ -86,15 +99,16 @@ All live AI goes through **AIBots (Singapore gov platform) via a Directus gatewa
 ## Project structure
 
 ```
-api/
+api/                  ⚠️ every file here is one Vercel serverless function — Hobby plan caps the deployment at 12
   webhook.ts          Live entry point (Telegram/TikTok). Fire-and-forget: 200 immediately, process in background.
+  webhook-study.ts    Same handler forced into the NUS-study configuration (study flags, own bot token, study: Redis prefix).
   sim.ts              Synchronous sim endpoint — runs the real graph, returns the reply. Token-gated.
   eval-results.ts     Eval results: POST (dual-write Redis+SharePoint), GET (read for dashboard).
   uat-logs.ts         UAT live-log: GET (read), POST (toggle capture / switch menu mode).
   label-queue.ts      Labelling: GET review queue (labeler token), POST ingest units (SIM_TOKEN).
   labels.ts           Labelling: POST a human label (labeler token), GET export JSON/CSV (UAT token).
   label-stats.ts      Human-vs-judge agreement report (UAT token).
-  refresh-token.ts    Cron: refreshes the TikTok access token.
+  refresh-token.js    Cron: refreshes the TikTok access token.
 src/
   graph/              LangGraph graph + runner (phase-driven state machine).
   nodes/              authGuard, ageCheck/ageGate, questionnaire, answerEvaluator, safetyCheck/Gate,
@@ -141,7 +155,7 @@ Rates individual Carey replies so we can build a **gold set**, then calibrate an
 
 - **Rubric** — [`src/config/judgeRubric.ts`](src/config/judgeRubric.ts) is the single source of truth for both the human UI and the judge prompt: 5 pass/fail dimensions (safety, shape, tone, referral, boundaries) + a good/borderline/bad overall. A fail on a **critical** dimension (safety, boundaries) forces `bad` — enforced in code, not left to the model. **Not yet clinically signed off**; bump `JUDGE_VERSION` on any wording change so labels stay comparable.
 - **Pre-labelling** — `npm run judge` ([`run-judge.ts`](src/scripts/run-judge.ts)) pulls eval transcripts, splits them into reply-in-context units (only AI-generated turns — deterministic screener output is skipped), scores each with the judge, and ingests them.
-- **Human review** — `public/label.html`: one reply at a time with its context, rubric pre-filled with the judge's proposal to confirm or override. **Blind mode** hides the proposal for anchor-free gold-set labelling. Per-reviewer tokens (`LABELER_TOKENS`) attribute every label, enabling inter-rater agreement.
+- **Human review** — `public/label.html`: one reply at a time with its context, rubric pre-filled with the judge's proposal to confirm or override. **Blind mode** hides the proposal for anchor-free gold-set labelling. Per-reviewer tokens (`LABELER_TOKENS`) attribute every label, enabling inter-rater agreement. **Reviewer instructions:** [`docs/EVALUATION_RUNBOOK.md`](docs/EVALUATION_RUNBOOK.md).
 - **Storage** — Redis working store + SharePoint archive via `LABELS_WEBHOOK_URL`. `GET /api/labels?format=csv` exports human vs judge verdicts for **Power BI**. Power BI is read-only — it charts labels, it cannot collect them. Agreement is stored as **two plain booleans** — `hasJudgeProposal` (was there anything to compare against?) and `agreedWithLlm` (did the human match it exactly?) — so no field is ever three-state. **Filter on `hasJudgeProposal = true` before computing any agreement rate.**
 - **Agreement dashboard** — `public/label-dashboard.html` (`/api/label-stats`) answers "can the judge be trusted yet?": **Cohen's κ** (human vs judge) with a Landis & Koch reading, a confusion matrix, per-dimension κ, **accuracy per judge version**, inter-rater κ between reviewers, judge **bias direction** (too lenient vs too strict), and a **critical-misses** list — replies where the judge passed a safety/boundaries check a human failed. Stats live in [`src/lib/agreement.ts`](src/lib/agreement.ts) (pure + unit-tested).
 
@@ -273,7 +287,11 @@ Power Automate → SharePoint "Reviewers" list → cache → compare locally
 | `DIRECTUS_CREATE_CHAT_URL`, `DIRECTUS_SEND_MESSAGE_URL` | AIBots (Carey) |
 | `DIRECTUS_SOCIALCOACH_CREATE_CHAT_URL` | AIBots (social coach); shares the send URL |
 | `DIFY_API_URL`, `DIFY_API_KEY`, `DIFY_SOCIALCOACH_API_KEY` | Dify fallbacks |
-| `TELEGRAM_BOT_TOKEN` | Telegram |
+| `TELEGRAM_BOT_TOKEN` | Telegram (the bot served by `/api/webhook`) |
+| `TELEGRAM_BOT_TOKEN_STUDY` | Telegram token for the study bot on `/api/webhook-study` (falls back to `TELEGRAM_BOT_TOKEN`) |
+| `STUDY_POWER_AUTOMATE_WEBHOOK_URL` | Separate conversation-log list for the study bot (falls back to the shared one) |
+| `STUDY_MENU_MODE` | Study endpoint entry UX (`numbered` default / `intent`) |
+| `STUDY_SCREENER_ENABLED` etc. | Per-flag overrides of the forced study configuration (see `src/lib/studyMode.ts`) |
 | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | TikTok token cron |
 | `SHAREPOINT_WHITELIST_WEBHOOK_URL` | RBAC whitelist lookup (Power Automate) |
 | `POWER_AUTOMATE_WEBHOOK_URL` | Conversation log |
@@ -313,14 +331,24 @@ Node isn't required in prod (Vercel builds it); local dev needs Node ≥ 20.
 
 Newest first. Anything marked **uncommitted** exists in the working tree but is not yet in git.
 
-### Reviewer access via SharePoint — *uncommitted*
+### Outcome measurement (Developer Briefing) — *in progress, uncommitted*
+Structured outcome events reported by the coach via a `[DATA {...}]` tag: parser/validator (`src/lib/outcomeEvents.ts`), persistent confidence + session-count store (`src/lib/outcomeStore.ts`), dedicated SharePoint writer (`src/services/outcomeLogger.ts`), plus KPI fields in the conversation log. **Built and unit-tested but not yet wired** — see `docs/OUTCOME_METRICS_REVIEW.md` and `docs/OUTCOME_METRICS_IMPROVEMENTS.md` for the plan (schema fixes land before wiring).
+
+### Study webhook, prompt repair, UI redesign, docs — *committed (Aug 26)*
+- **`/api/webhook-study`** — serves the frozen NUS-study configuration from the shared deployment (forced study flags, own bot token, `study:` Redis namespace), after the pivot's env-flag flip had silently turned the careytest bot into the pivot.
+- **`socialCoachPrompt.ts` repaired** — three GitHub-web edits had pasted raw v9 prompt text over the module, breaking every deploy since; re-wrapped with the `[CRISIS]`/`[REFERRAL]` tag contract restored (v9 defines no tags itself).
+- **Function-cap cleanup** — removed dead `webhook-new.js`, `daily-risk-report.js`, `cron/tiktokToken.ts`; deployment now 10/12 functions.
+- **Staff pages redesigned** — shared calm light theme, cross-navigation, mobile-friendly `label.html`, friendly token/empty states. JS behaviour byte-identical except a nav link.
+- **`docs/`** — metrics review + improvement plan, prompt-editing proposal, reviewer runbook, accounts inventory, editing guide.
+
+### Reviewer access via SharePoint — *committed*
 Removed the developer from the loop for labelling access, matching how the user whitelist already works.
 - `src/services/labelerService.ts` — reviewer list from a SharePoint "Reviewers" list via Power Automate, cached in Redis (fresh 5 min, retained 24h, **stale-on-failure** so an outage doesn't lock reviewers out); falls back to `LABELER_TOKENS` as break-glass/local dev.
 - Fetches the whole list and compares locally with `timingSafeEqual` — the token is never sent to Power Automate.
 - `labelers.ts` refactored to expose `matchToken`; endpoints now resolve reviewers asynchronously.
 - 18 new tests (column-name/status parsing, cache freshness, stale-serving, fail-closed, break-glass).
 
-### Reply labelling platform + judge agreement — *uncommitted*
+### Reply labelling platform + judge agreement — *committed*
 Groundwork for LLM-as-judge: build a human gold set, then measure whether a judge can be trusted to label at scale.
 - `src/config/judgeRubric.ts` — versioned rubric (5 pass/fail dimensions + overall); single source of truth for the UI *and* the judge prompt. Critical-dimension failure forces `bad`, enforced in code.
 - `src/lib/replyUnits.ts` — splits transcripts into reply-in-context units; skips deterministic screener turns.
@@ -331,18 +359,18 @@ Groundwork for LLM-as-judge: build a human gold set, then measure whether a judg
 - Agreement stored as two plain booleans (`hasJudgeProposal` + `agreedWithLlm`) rather than one three-state field, so SharePoint and Power BI stay simple.
 - 41 new unit tests (κ verified against hand-computed values).
 
-### Eval harness upgrades — *uncommitted*
+### Eval harness upgrades — *committed*
 - **Menu-mode A/B** — every persona now runs under both `intent` and `numbered`; results tagged with `menuMode`, dashboard compares them side by side (KPIs, scorecard column, per-mode trend rows).
 - **Roleplay "youth" moved from OpenAI `gpt-4o-mini` → Qwen** (`qwen-plus`) for cost. `run-eval.ts` only; the local `npm run simulate` still uses OpenAI.
 - **6 new social-coach personas** (conflict repair, confession, left out, boundaries, deepening friendship) + `social_then_crisis`, which starts as coaching and escalates — exercising crisis routing *inside* the coach.
 - `/api/sim` accepts a per-request `menuMode` override, independent of the global flag.
 
-### Crisis-safety hardening — *uncommitted*
+### Crisis-safety hardening — *committed*
 - Universal deterministic phrase backstop in the router — runs on **every** turn in **every** phase, no LLM dependency.
 - `emergencyHandler` rewritten to AI-generated **with a guaranteed static hotline fallback**, so `1771` survives any provider outage or entry path.
 - Shared `containsCrisisPhrase` in `crisisDetection.ts` (was duplicated in the classifier).
 
-### Seamless lane switching — *uncommitted*
+### Seamless lane switching — *committed*
 - In `intent` mode the router re-runs the classifier on **every** in-lane turn, so lanes can change mid-conversation. Default is to stay put; switching requires a confident, different intent. Never dumps to the menu mid-conversation.
 - On a switch: fresh backend session + transcript as context + a bridging instruction (`justSwitchedLane` state flag).
 
