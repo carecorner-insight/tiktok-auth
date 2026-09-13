@@ -45,6 +45,9 @@ export interface CareyBotState {
   conversationPhase: ConversationPhase;
   selectedOption: MenuOption | null;
 
+  // One-turn intent, independent of provider session IDs. Absent on old sessions.
+  menuSelection?: boolean;
+
   // Conversation history sent to AIBots
   messages: Message[];
 
@@ -62,8 +65,7 @@ export interface CareyBotState {
   // True once the coach has been offered this session — prevents repeat nagging
   socialCoachOffered: boolean;
 
-  // Set for one turn when the coach emits [REFERRAL] — the Growing We build's
-  // only route to a human, since the scenario menu has no team option.
+  // Set for one turn by the coach's [REFERRAL] or a HUMAN classification.
   referralRequested: boolean;
 
   // True while waiting on the "are you 25 or under?" fallback, asked only when
@@ -99,6 +101,7 @@ export const initialState = (
   tag: null,
   conversationPhase: 'ageCheck',
   selectedOption: null,
+  menuSelection: false,
   messages: [],
   pendingResponse: null,
   crisisDetected: false,

@@ -66,6 +66,7 @@ const GraphAnnotation = Annotation.Root({
   tag:                Annotation<tag | null>,
   conversationPhase:  Annotation<ConversationPhase>,
   selectedOption:     Annotation<MenuOption | null>,
+  menuSelection:      Annotation<boolean>,
   messages:           Annotation<Message[]>({ reducer: (_, next) => next, default: () => [] }),
   pendingResponse:    Annotation<string | null>,
   crisisDetected:     Annotation<boolean>,
@@ -113,10 +114,11 @@ function routeFromSafetyGate(state: typeof GraphAnnotation.State): string {
 
 function routeFromIntentClassifier(state: typeof GraphAnnotation.State): string {
   // Crisis (local phrase match or LLM label) → emergency response this turn.
-  if (state.crisisDetected && state.conversationPhase === 'crisis') {
+  if (state.crisisDetected) {
     console.log('[route] intentClassifier → emergencyHandler (crisis)');
     return 'emergencyHandler';
   }
+  if (state.referralRequested) return 'resourceRedirectNode';
   if (!state.selectedOption) {
     // UNCLEAR / LLM failure — pendingResponse already carries the fallback menu.
     console.log('[route] intentClassifier → sessionPersister (unclear → menu fallback)');
@@ -131,10 +133,10 @@ function routeFromIntentClassifier(state: typeof GraphAnnotation.State): string 
   return next;
 }
 
-// The coach emitted [REFERRAL] — hand off to the age-triaged referral. This is
-// the Growing We build's only user-reachable route to a human.
+// The coach emitted [REFERRAL] — hand off to the age-triaged referral.
+// The classifier's HUMAN result also reaches that node independently.
 function routeFromSocialCoach(state: typeof GraphAnnotation.State): string {
-  if (state.crisisDetected && state.conversationPhase === 'crisis') {
+  if (state.crisisDetected) {
     return 'emergencyHandler';
   }
   if (state.referralRequested) {
@@ -236,8 +238,12 @@ export function buildGraph(services: GraphServices) {
     .addEdge('safetyCheckNode',      'sessionPersister')
     .addEdge('emergencyHandler',     'sessionPersister')
     .addEdge('menuPresenter',        'sessionPersister')
-    .addEdge('freeTextNode',         'sessionPersister')
-    .addEdge('resourceRedirectNode', 'sessionPersister')
+    .addConditionalEdges('freeTextNode', state => state.crisisDetected ? 'emergencyHandler' : 'sessionPersister', {
+      emergencyHandler: 'emergencyHandler', sessionPersister: 'sessionPersister',
+    })
+    .addConditionalEdges('resourceRedirectNode', state => state.crisisDetected ? 'emergencyHandler' : 'sessionPersister', {
+      emergencyHandler: 'emergencyHandler', sessionPersister: 'sessionPersister',
+    })
     .addEdge('sessionPersister',     END);
 
   return graph.compile();

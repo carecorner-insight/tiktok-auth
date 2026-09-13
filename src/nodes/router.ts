@@ -81,6 +81,11 @@ export function makeRouter(mode: MenuMode = 'intent') {
 
     if (conversationPhase === 'crisis') return 'emergencyHandler';
 
+    // Referral age answers belong to the pending referral, not a coach's menu.
+    if (scenarioMenuEnabled() && state.awaitingReferralAge) {
+      return MENU_KEYWORDS.has(getLastUserInput(state)) ? 'menuPresenter' : 'resourceRedirectNode';
+    }
+
     if (conversationPhase === 'menu') return 'intentClassifierNode';
 
     if (conversationPhase === 'option' && selectedOption) {

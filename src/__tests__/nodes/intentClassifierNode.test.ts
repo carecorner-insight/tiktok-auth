@@ -53,7 +53,8 @@ describe('intentClassifierNode', () => {
     const node = makeIntentClassifierNode(llm);
 
     const r1 = await node(stateWithInput('1'));
-    expect(r1).toEqual({ selectedOption: 1, conversationPhase: 'option', justSwitchedLane: false });
+    expect(r1).toEqual({ selectedOption: 1, conversationPhase: 'option', justSwitchedLane: false,
+      menuSelection: true, aiBotChatId: null, pendingHandoff: null });
 
     const r2 = await node(stateWithInput(' 2. '));
     expect(r2.selectedOption).toBe(2);
@@ -69,7 +70,7 @@ describe('intentClassifierNode', () => {
     const node = makeIntentClassifierNode(llm);
     const result = await node(stateWithInput('honestly I just want to die'));
     expect(result.crisisDetected).toBe(true);
-    expect(result.conversationPhase).toBe('crisis');
+    expect(result.conversationPhase).toBe('menu'); // emergencyHandler owns phase entry
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
@@ -77,7 +78,8 @@ describe('intentClassifierNode', () => {
     const llm = makeLLMMock('TALK');
     const node = makeIntentClassifierNode(llm);
     const result = await node(stateWithInput('school has been stressing me out'));
-    expect(result).toEqual({ selectedOption: 1, conversationPhase: 'option', justSwitchedLane: false });
+    expect(result).toEqual({ selectedOption: 1, conversationPhase: 'option', justSwitchedLane: false,
+      menuSelection: true, aiBotChatId: null, pendingHandoff: null });
     expect(llm.chat).toHaveBeenCalledWith(null, 'school has been stressing me out', undefined, undefined);
   });
 
@@ -97,7 +99,7 @@ describe('intentClassifierNode', () => {
     const node = makeIntentClassifierNode(makeLLMMock('CRISIS'));
     const result = await node(stateWithInput('everyone would be happier without me around'));
     expect(result.crisisDetected).toBe(true);
-    expect(result.conversationPhase).toBe('crisis');
+    expect(result.conversationPhase).toBe('menu');
   });
 
   it('falls back to the numbered menu on UNCLEAR', async () => {
@@ -128,7 +130,7 @@ describe('intentClassifierNode', () => {
     const node = makeIntentClassifierNode(llm);
     const result = await node(stateWithInput('I keep thinking about ending my life'));
     expect(result.crisisDetected).toBe(true);
-    expect(result.conversationPhase).toBe('crisis');
+    expect(result.conversationPhase).toBe('menu');
     expect(llm.chat).not.toHaveBeenCalled();
   });
 });
@@ -193,17 +195,17 @@ describe('intentClassifierNode — re-evaluation (in-lane, intent mode)', () => 
   it('routes to crisis on a phrase match even mid-lane, without the LLM', async () => {
     const llm = makeLLMMock('TALK');
     const result = await makeIntentClassifierNode(llm)(inLaneState('i want to kill myself', 1));
-    expect(result.conversationPhase).toBe('crisis');
+    expect(result.conversationPhase).toBe('option');
     expect(result.crisisDetected).toBe(true);
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
-  it('switches on a whole-message numeric selection mid-lane', async () => {
+  it('keeps a whole-message numeric answer in the current lane', async () => {
     const llm = makeLLMMock('TALK');
     const result = await makeIntentClassifierNode(llm)(inLaneState('2', 1));
-    expect(result.selectedOption).toBe(2);
-    expect(result.justSwitchedLane).toBe(true);
-    expect(result.aiBotChatId).toBeNull();
+    expect(result.selectedOption).toBe(1);
+    expect(result.justSwitchedLane).toBe(false);
+    expect(result.aiBotChatId).toBeUndefined();
     expect(llm.chat).not.toHaveBeenCalled();
   });
 

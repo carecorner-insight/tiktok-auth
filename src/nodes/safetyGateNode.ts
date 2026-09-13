@@ -20,6 +20,5 @@ export function safetyGateNode(state: CareyBotState): NodeResult {
   return {
     tag: 'high',
     crisisDetected: true,
-    conversationPhase: 'crisis',
   };
 }

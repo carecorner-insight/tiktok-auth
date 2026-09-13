@@ -4,6 +4,8 @@ import {
   COUNSELLING_URL,
   REFERRAL_AGE_FALLBACK,
   referralUrlForAge,
+  INSIGHT_URL,
+  CREST_URL,
 } from '../config/questionnaire';
 import { scenarioMenuEnabled } from '../lib/pivotFlags';
 import { getLastUserInput } from '../types/nodes';
@@ -26,16 +28,22 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: IT
     // the age captured at welcome — no question at the referral moment. Only an
     // unknown age (the user skipped twice) triggers the fallback question.
     if (scenarioMenuEnabled()) {
-      const url = referralUrlForAge(state.age);
+      // The fallback asks for an age band; do not invent an exact stored age.
+      const ageBandUrl = state.awaitingReferralAge
+        ? /^(1|yes|y)$/.test(userText) ? INSIGHT_URL
+          : /^(2|no|n)$/.test(userText) ? CREST_URL : null
+        : null;
+      const url = referralUrlForAge(state.age) ?? ageBandUrl;
       if (url) {
         return {
           pendingResponse:
             `It sounds like it could help to talk this through with someone from our team.\n\n` +
             `You can reach them here: ${url}\n\n` +
             `We can keep going here too — just tell me what's on your mind.`,
-          conversationPhase: 'option',
+          conversationPhase: state.selectedOption ? 'option' : 'menu',
           referralRequested: false,
           awaitingReferralAge: false,
+          menuSelection: false,
         };
       }
       return {
@@ -46,7 +54,7 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: IT
       };
     }
 
-    const isInitialSelection = /^[.\s]*[3][.\s]*$/.test(userText);
+    const isInitialSelection = state.menuSelection;
 
     // Static resource block — the counselling URL must be exact, so we never let
     // the LLM reproduce it. Used for the initial selection and for a seamless
@@ -66,11 +74,13 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: IT
         selectedOption: 3,
         justSwitchedLane: false,
         aiBotChatId: null,
+        menuSelection: false,
       };
     }
 
     if (isInitialSelection) {
       return {
+        menuSelection: false,
         pendingResponse: `Here are some resources that may help:\n\n` + RESOURCE_BLOCK,
         conversationPhase: 'option',
         selectedOption: 3,
@@ -99,7 +109,7 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: IT
       return {
         aiBotChatId: result.chatId,
         pendingResponse: reply,
-        conversationPhase: isCrisis ? 'crisis' : 'option',
+        conversationPhase: 'option',
         selectedOption: 3,
         justSwitchedLane: false,
         ...(isCrisis && { crisisDetected: true }),

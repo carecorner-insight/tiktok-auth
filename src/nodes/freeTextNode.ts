@@ -39,30 +39,26 @@ export function makeFreeTextNode(
         `then continue warmly from where they are (State 2B, Post-Screener ` +
         `Engagement). Do not run triage or a screener. If they are distressed you ` +
         `may offer ONE brief coping or regulation skill when it fits.`
-      : `[SYSTEM CONTEXT] This is the start of a new conversation. ` +
+      : state.menuSelection
+      ? `[SYSTEM CONTEXT] The user selected the talk lane. ` +
         `The user has completed the CareyBot intake screening (risk level: ${state.tag ?? 'low'}) ` +
         `and is now opening a fresh chat to talk about something on their mind. ` +
         `You are entering State 2B (Post-Screener Engagement) for the first time. ` +
         `Do not reference any previous sessions. Do not run triage or screener. ` +
         `Begin with a warm, brief invitation to share. As the conversation develops, ` +
         `follow the emotion ladder — if the user is distressed, you may offer ONE brief ` +
-        `coping or regulation skill (State 4) when it fits.`;
+        `coping or regulation skill (State 4) when it fits.`
+      : `[SYSTEM CONTEXT] Continue the existing conversation from the history and latest answer. ` +
+        `A new backend session is not a new conversation. Do not repeat the introduction or answered questions.`;
 
     await typing.sendTypingIndicator(state.userId);
     const typingInterval = setInterval(() => {
       typing.sendTypingIndicator(state.userId).catch(() => {});
     }, 4000);
 
-    // New session: if the user arrived via a bare menu digit there is nothing
-    // meaningful to forward, so kick off with 'Hi'. Otherwise (open-ended entry,
-    // or a mid-conversation switch) their message carries real content — forward
-    // it so Carey responds to what they actually said.
-    const isBareMenuDigit = /^[123]$/.test(normalized.replace(/[.\s]/g, ''));
-    const textForAI = !state.aiBotChatId && isBareMenuDigit ? 'Hi' : rawText;
-
     const history = state.messages.slice(0, -1);
     try {
-      const result = await aiBotsClient.chat(state.aiBotChatId, textForAI, primeMessage, history);
+      const result = await aiBotsClient.chat(state.aiBotChatId, rawText, primeMessage, history);
       const { reply, isCrisis, suggestsSocialCoach } = parseReplyTags(result.reply);
 
       // The manual coach offer only applies in NUMBERED mode. In intent mode the
@@ -77,8 +73,9 @@ export function makeFreeTextNode(
         // user says anything that isn't "yes" (the router catches "yes").
         pendingHandoff: offerCoach ? 'socialCoach' : null,
         justSwitchedLane: false,
+        menuSelection: false,
         ...(offerCoach && { socialCoachOffered: true }),
-        ...(isCrisis && { crisisDetected: true, conversationPhase: 'crisis' }),
+        ...(isCrisis && { crisisDetected: true }),
       };
     } finally {
       clearInterval(typingInterval);

@@ -6,6 +6,7 @@ import { processMessage } from '../src/graph/runner';
 import { SessionManager } from '../src/services/sessionManager';
 import { makeCareyAIClient } from '../src/services/makeCareyAIClient';
 import { makeSocialCoachClient } from '../src/services/makeSocialCoachClient';
+import { resolveCoachConfig } from '../src/services/resolveCoachConfig';
 import { DirectLLMClient } from '../src/services/directLLMClient';
 import { INTENT_CLASSIFIER_PROMPT } from '../src/nodes/intentClassifierNode';
 import { getMenuMode } from '../src/lib/menuMode';
@@ -76,6 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await session.clear(platform, userId);
   }
 
+  const coachConfig = await resolveCoachConfig(redis);
   const services = {
     // Force-authorized: the simulator uses synthetic user IDs that aren't in the
     // SharePoint whitelist. This exercises the conversation flow, not RBAC.
@@ -83,7 +85,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     session,
     aiBots: makeCareyAIClient(),
     // Same provider selection as the live webhook, so sims exercise the real path.
-    socialCoach: makeSocialCoachClient(),
+    socialCoach: makeSocialCoachClient(coachConfig),
     intentLLM: new DirectLLMClient({
       apiKey: process.env.QWEN_API_KEY ?? '',
       baseURL: process.env.QWEN_BASE_URL ?? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
@@ -110,6 +112,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = await processMessage(msg, services);
     return res.status(200).json({
       response: result.response,
+      coach: coachConfig.metadata,
       state: {
         conversationPhase: result.state.conversationPhase,
         questionIndex: result.state.questionIndex,

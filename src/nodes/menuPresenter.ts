@@ -24,6 +24,11 @@ export function makeMenuPresenter(mode: MenuMode) {
         conversationPhase: 'menu',
         selectedOption: null,
         aiBotChatId: null,
+        menuSelection: false,
+        pendingHandoff: null,
+        justSwitchedLane: false,
+        referralRequested: false,
+        awaitingReferralAge: false,
       };
     }
 
@@ -31,6 +36,9 @@ export function makeMenuPresenter(mode: MenuMode) {
       pendingResponse: mode === 'numbered' ? MENU_TEXT : OPENING_TEXT,
       conversationPhase: 'menu',
       aiBotChatId: null,
+      menuSelection: false,
+      pendingHandoff: null,
+      justSwitchedLane: false,
     };
   };
 }

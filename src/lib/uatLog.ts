@@ -1,5 +1,6 @@
 import type { RedisClient } from './redis';
 import { redactPII } from './pii';
+import type { CoachMetadata } from '../services/resolveCoachConfig';
 
 // Ephemeral ring buffer of recent conversation turns, for the UAT live-log page.
 // Capture is gated on UAT_LOG_TOKEN being set (see webhook.ts), so nothing is
@@ -21,7 +22,8 @@ export interface UatLogEntry {
   phase: string;
   tag: string | null;
   crisis: boolean;
-  provider: 'aibots' | 'dify' | 'none';
+  provider: 'aibots' | 'dify' | 'direct' | 'none';
+  coach?: CoachMetadata;
   latencyMs: number;
   error: boolean;
 }
@@ -30,6 +32,7 @@ function providerFromChatId(chatId: string | null | undefined): UatLogEntry['pro
   if (!chatId) return 'none';
   if (chatId.startsWith('dify:')) return 'dify';
   if (chatId.startsWith('aibots:')) return 'aibots';
+  if (chatId.startsWith('direct:')) return 'direct';
   return 'none';
 }
 

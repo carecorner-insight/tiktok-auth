@@ -1,5 +1,6 @@
 import { restartNode } from '@/nodes/restartNode';
 import { makeState } from '@/__tests__/mocks';
+import { ageCheckNode } from '@/nodes/ageCheckNode';
 
 describe('restartNode — state reset', () => {
   it('resets conversationPhase to ageCheck', () => {
@@ -49,8 +50,8 @@ describe('restartNode — response', () => {
   it('returns the age check greeting as pendingResponse', () => {
     const result = restartNode(makeState());
     expect(result.pendingResponse).toContain('Carey');
-    expect(result.pendingResponse).toContain('13');
-    expect(result.pendingResponse).toContain('Yes / No');
+    expect(result.pendingResponse).toBe(ageCheckNode(makeState({ age: null })).pendingResponse);
+    expect(result.pendingResponse).toContain('how old are you');
   });
 
   it('works regardless of the current phase', () => {

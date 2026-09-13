@@ -19,7 +19,7 @@ import type { Platform } from '../src/types/state';
 import { pushUatLog, providerFromChatId } from '../src/lib/uatLog';
 import { getMenuMode, type MenuMode } from '../src/lib/menuMode';
 import { getStoredAge, setStoredAge } from '../src/lib/ageStore';
-import { loadLiveCoachPrompt } from '../src/lib/promptStore';
+import { resolveCoachConfig } from '../src/services/resolveCoachConfig';
 
 export const config = { runtime: 'nodejs', maxDuration: 60 };
 
@@ -138,6 +138,8 @@ export async function handleMessage(
   await withUserLock(redis, msg.platform, msg.userId, async () => {
     console.log(`[perf] lock acquire: ${Date.now() - tLock}ms`);
     const menuMode = opts.menuMode ?? (await getMenuMode(redis));
+    const coachConfig = await resolveCoachConfig(redis);
+    console.log('[coach-config]', { ...coachConfig.metadata, menuMode });
     const services = {
       whitelist: new WhitelistService(redis, fetchWhitelistStatus),
       session: new SessionManager(redis),
@@ -152,7 +154,7 @@ export async function handleMessage(
       // problem falls back to bundled (loadLiveCoachPrompt never throws). The
       // study endpoint forces DYNAMIC_COACH_PROMPT=false, so it always gets
       // the bundled prompt.
-      socialCoach: makeSocialCoachClient((await loadLiveCoachPrompt(redis))?.prompt),
+      socialCoach: makeSocialCoachClient(coachConfig),
       // Intent classification for the open-ended post-screener entry — a
       // direct OpenAI-compatible call (single-token output, no AIBots session).
       intentLLM: new DirectLLMClient({
@@ -207,6 +209,7 @@ export async function handleMessage(
             provider: providerFromChatId(fallbackState?.aiBotChatId),
             latencyMs: Date.now() - tTotal,
             error: true,
+            coach: coachConfig.metadata,
           });
         } catch (e) {
           console.error('[uat] log push failed:', e);
@@ -241,6 +244,7 @@ export async function handleMessage(
           provider: providerFromChatId(result.state.aiBotChatId),
           latencyMs: Date.now() - tTotal,
           error: false,
+          coach: coachConfig.metadata,
         });
       } catch (e) {
         console.error('[uat] log push failed:', e);

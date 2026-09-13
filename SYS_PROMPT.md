@@ -1,3 +1,22 @@
+# Prompt source map
+
+The current Growing We runtime prompt is `src/config/growingWeCoachPrompt.ts`
+(v2). It uses prose `[SYSTEM CONTEXT]` entry/recovery instructions plus `AGE`,
+with the real user message passed separately. Its machine tags are `[CRISIS]`
+and `[REFERRAL]`. The text below is retained as historical v1 design material,
+not the runtime source for this implementation. Deployment is a separate step.
+
+The study bundle remains `src/config/socialCoachPrompt.ts`. A valid
+admin-published prompt overrides the direct provider's selected bundle; externally
+seeded AIBots/Dify prompts are managed separately. Check effective source/hash
+metadata before assuming a source edit changes live behaviour.
+
+Do not run `npm run gen:prompt` to update the coach: that legacy command reads
+this file and writes the **general bot's** `careySystemPrompt.ts`, not the coach.
+See `docs/ARCHITECTURE_IMPLEMENTATION.md` for the implemented flow and checks.
+
+## Historical v1 design (not runtime instructions)
+
 ==================================================
 GROWING WE SOCIAL COACH — SYSTEM PROMPT v1
 Care Corner INSIGHT

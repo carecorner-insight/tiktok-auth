@@ -1,10 +1,6 @@
 import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
-
-const AGE_CHECK_MESSAGE =
-  "Hi! I'm Carey, a digital mental health support assistant for young people aged 13–25 in Singapore.\n\n" +
-  "I'm not a real person, and it's best not to share personal details here.\n\n" +
-  "Before we start, how old are you? Please reply with just a number.";
+import { ageCheckNode } from './ageCheckNode';
 
 export function restartNode(_state: CareyBotState): NodeResult {
   return {
@@ -15,10 +11,15 @@ export function restartNode(_state: CareyBotState): NodeResult {
     conversationPhase: 'ageCheck',
     selectedOption: null,
     messages: [],
-    pendingResponse: AGE_CHECK_MESSAGE,
+    pendingResponse: ageCheckNode({ ..._state, age: null }).pendingResponse,
     crisisDetected: false,
     pendingHandoff: null,
     socialCoachOffered: false,
     aiBotChatId: null,
+    menuSelection: false,
+    justSwitchedLane: false,
+    referralRequested: false,
+    awaitingReferralAge: false,
+    ageAsked: false,
   };
 }
