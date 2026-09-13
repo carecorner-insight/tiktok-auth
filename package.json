@@ -1,6 +1,8 @@
 {
   "scripts": {
     "build": "tsc --noEmit",
+    "typecheck:api": "tsc --noEmit -p tsconfig.api.json",
+    "test:comments": "jest --runInBand --testPathPattern='(commentRouting|conversationEntry|fallbackAIClient|resolveCoachConfig|telegram|intentClassifierNode|router|scenarioMenu|restartNode|directLLMClient|aiBotsClient|emergencyHandler|emergencyHandlerStaticFirst|studyMode|replyTags|promptStore|referralTag)\\.test\\.ts$'",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

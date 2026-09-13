@@ -80,7 +80,7 @@ describe('F6 — coach opens on the chosen scenario', () => {
   it('primes the coach with the scenario instead of asking which situation', async () => {
     const coach = { chat: jest.fn().mockResolvedValue({ reply: 'ok', chatId: 'c1' }) };
     await makeSocialCoachNode(coach as never, typing as never)(
-      withUserMsg('4', { conversationPhase: 'option', selectedOption: 4, aiBotChatId: null }),
+      withUserMsg('4', { conversationPhase: 'option', selectedOption: 4, aiBotChatId: null, menuSelection: true }),
     );
     const prime = coach.chat.mock.calls[0][2] as string;
     expect(prime).toContain(SCENARIOS[4].label);

@@ -41,16 +41,10 @@ export class FallbackAIClient {
       ? chatId.replace(AIBOTS_PREFIX, '').replace(DIFY_PREFIX, '')
       : null;
 
-    // Nodes set primeMessage ONLY for a genuinely fresh AI session (aiBotChatId
-    // was null). A mid-session turn leaves it undefined. So:
-    //   primeMessage defined   → fresh start: prime alone, DO NOT replay history
-    //                            (avoids dumping the screener transcript into a
-    //                             brand-new conversation)
-    //   primeMessage undefined → mid-session: a switch to a fresh session on the
-    //                            other provider must replay history for continuity
-    const isMidSession = primeMessage === undefined;
+    // A handoff/recovery can carry BOTH a prime and history. Provider clients
+    // replay context only when creating a new server-side session.
     const switchPrime  = primeMessage ?? recoveryPrimeFromHistory(history);
-    const ctxHistory   = isMidSession ? history : undefined;
+    const ctxHistory   = history;
 
     // ── Currently on Dify — probe AIBots to see if it has recovered ──
     if (isDifySession) {
@@ -69,14 +63,13 @@ export class FallbackAIClient {
 
     // ── Try primary (AIBots) ──
     try {
-      // Fresh session → ctxHistory is undefined (clean start). Mid-session →
-      // ctxHistory carries context for AIBots' internal crash-recovery path.
+      // Supplied context also supports AIBots' internal crash-recovery path.
       const result = await this.primary.chat(rawId, text, primeMessage, ctxHistory);
       return { reply: result.reply, chatId: `${AIBOTS_PREFIX}${result.chatId}` };
     } catch (primaryErr) {
       console.warn('[ai] primary AIBots failed, switching to Dify fallback:', primaryErr);
 
-      // Fresh Dify session — replay history only if this was a mid-session turn.
+      // Fresh Dify session — replay the context supplied by the caller.
       const result = await this.fallback.chat(null, text, switchPrime, ctxHistory);
       return { reply: result.reply, chatId: `${DIFY_PREFIX}${result.chatId}` };
     }

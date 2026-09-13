@@ -44,20 +44,25 @@ export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITyping
     const scenarioOption =
       scenarioMenuEnabled() && state.selectedOption ? state.selectedOption : null;
 
-    const primeMessage = scenarioOption && !state.aiBotChatId
-      ? scenarioPrime(scenarioOption)
+    const primeMessage = scenarioOption && state.menuSelection
+      ? scenarioPrime(scenarioOption) + ` AGE: ${state.age ?? 'unknown'}. ` +
+        `Use earlier context where relevant; do not introduce yourself again or re-ask answered questions.`
       : isBridge
       ? `[SYSTEM CONTEXT] The user was just talking with Carey and now wants to ` +
         `work on a social situation with you. The conversation history shows what ` +
-        `they have been dealing with — acknowledge it briefly in ONE line, then go ` +
-        `to STEP 1 — CONTEXT CHECK for that situation. Do not run any triage or ` +
+        `they have been dealing with — continue from that context without a new introduction ` +
+        `or repeating answered questions. Do not run any triage or ` +
         `screener. Keep it short and mobile-friendly.`
-      : !state.aiBotChatId
+      : state.menuSelection
       ? `[SYSTEM CONTEXT] This is the start of a new social coaching conversation. ` +
         `The user has completed the CareyBot intake screening (risk level: ${state.tag ?? 'low'}) ` +
         `and chose the social coach. Begin at STEP 1 — CONTEXT CHECK: warmly ask which social ` +
         `situation they want to prepare for or reflect on, offering a few friendly scenario options. ` +
         `Do not run any triage or screener. Keep it short and mobile-friendly.`
+      : !effectiveChatId
+      ? `[SYSTEM CONTEXT] Continue the existing conversation from the history and the user's ` +
+        `latest answer. A new backend session is not a new conversation. Do not introduce ` +
+        `yourself or repeat answered questions. AGE: ${state.age ?? 'unknown'}.`
       : undefined;
 
     await typing.sendTypingIndicator(state.userId);
@@ -65,27 +70,23 @@ export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITyping
       typing.sendTypingIndicator(state.userId).catch(() => {});
     }, 4000);
 
-    // Forward the user's real message so the coach responds to what they actually
-    // said. Only fall back to 'Hi' when a fresh session was entered via a bare
-    // menu digit (nothing meaningful to forward).
-    const isBareMenuDigit = /^[123]$/.test(userText.replace(/[.\s]/g, ''));
-    const textForAI = !effectiveChatId && isBareMenuDigit ? 'Hi' : rawText;
     const history = state.messages.slice(0, -1);
     try {
-      const result = await aiBotsClient.chat(effectiveChatId, textForAI, primeMessage, history);
+      const result = await aiBotsClient.chat(effectiveChatId, rawText, primeMessage, history);
       const { reply, isCrisis, suggestsReferral } = parseReplyTags(result.reply);
       return {
         aiBotChatId: result.chatId,
         pendingResponse: reply,
         // Keep the chosen scenario in the Growing We build; the triage build
         // only ever reaches the coach as option 2.
-        selectedOption: scenarioOption ?? state.selectedOption ?? 2,
+        selectedOption: scenarioOption ?? 2,
         pendingHandoff: null,
         justSwitchedLane: false,
-        // [REFERRAL] is the pivot's only route to a human — the scenario menu
-        // has no "connect with our team" entry. Crisis still takes precedence.
+        menuSelection: false,
+        // The coach can request a referral as well as the intent classifier.
+        // Crisis always takes precedence.
         referralRequested: !isCrisis && suggestsReferral,
-        conversationPhase: isCrisis ? 'crisis' : 'option',
+        conversationPhase: 'option',
         ...(isCrisis && { crisisDetected: true }),
       };
     } finally {

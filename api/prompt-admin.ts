@@ -12,6 +12,9 @@ import {
 } from '../src/lib/promptStore';
 import { SOCIAL_COACH_BASE_PROMPT, baseDefinesTagContract } from '../src/config/socialCoachPrompt';
 import { coachProvider } from '../src/services/makeSocialCoachClient';
+import { GROWING_WE_COACH_PROMPT } from '../src/config/growingWeCoachPrompt';
+import { scenarioMenuEnabled } from '../src/lib/pivotFlags';
+import { resolveCoachConfig } from '../src/services/resolveCoachConfig';
 
 export const config = { runtime: 'nodejs', maxDuration: 15 };
 
@@ -46,14 +49,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'GET') {
     const [live, history] = await Promise.all([getStoredPrompt(redis), listPromptHistory(redis)]);
+    const bundled = scenarioMenuEnabled() ? GROWING_WE_COACH_PROMPT : SOCIAL_COACH_BASE_PROMPT;
+    const effective = await resolveCoachConfig(redis);
     return res.status(200).json({
       live, // null → the bundled default prompt is serving
       bundled: {
-        chars: SOCIAL_COACH_BASE_PROMPT.length,
-        text: live ? undefined : SOCIAL_COACH_BASE_PROMPT,
+        chars: bundled.length,
+        text: live ? undefined : bundled,
       },
       limits: { min: PROMPT_MIN_CHARS, max: PROMPT_MAX_CHARS },
       provider: coachProvider(), // 'aibots' → edits here do not reach the model
+      effective: effective.metadata,
       dynamicEnabled: process.env.DYNAMIC_COACH_PROMPT !== 'false',
       // Full history records so the page can offer view + restore without
       // another endpoint (20 × prompt ≤ ~1.2MB worst case; fine for admin use).

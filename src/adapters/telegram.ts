@@ -2,6 +2,29 @@ import type { IPlatformAdapter, NormalizedMessage } from '../types/platform';
 
 type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean; status?: number; json(): Promise<unknown> }>;
 
+interface BoldEntity { type: 'bold'; offset: number; length: number }
+
+/** Only balanced, standalone *bold* / **bold**. No HTML/Markdown parser.
+ * Telegram entity offsets and JavaScript string lengths both use UTF-16 units.
+ */
+function formatBold(raw: string): { text: string; entities: BoldEntity[] } {
+  const entities: BoldEntity[] = [];
+  let text = ''; let cursor = 0;
+  const pattern = /(?<!\*)(\*\*|\*)(?!\*)(\S(?:[^*\n]*?\S)?)\1(?!\*)/g;
+  for (const match of raw.matchAll(pattern)) {
+    const start = match.index!;
+    const end = start + match[0].length;
+    // Do not reinterpret arithmetic, URL path segments, or partial words.
+    if (start > 0 && !/[\s([{“"']/.test(raw[start - 1])) continue;
+    if (end < raw.length && !/[\s.,!?;:)\]}”"']/.test(raw[end])) continue;
+    text += raw.slice(cursor, start);
+    entities.push({ type: 'bold', offset: text.length, length: match[2].length });
+    text += match[2];
+    cursor = end;
+  }
+  return { text: text + raw.slice(cursor), entities };
+}
+
 export class TelegramAdapter implements IPlatformAdapter {
   readonly platform = 'telegram' as const;
 
@@ -37,12 +60,21 @@ export class TelegramAdapter implements IPlatformAdapter {
   }
 
   async sendMessage(userId: string, text: string): Promise<void> {
-    const response = await this.fetch(`${this.apiBase}/sendMessage`, {
+    const formatted = formatBold(text);
+    const send = (entities?: BoldEntity[]) => this.fetch(`${this.apiBase}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: userId, text }),
+      body: JSON.stringify({ chat_id: userId, text: formatted.text, ...(entities?.length ? { entities } : {}) }),
     });
-
+    let response = await send(formatted.entities);
+    if (!response.ok && response.status === 400 && formatted.entities.length) {
+      const error = await response.json().catch(() => null) as { description?: unknown } | null;
+      if (typeof error?.description === 'string' && /can't parse entities/i.test(error.description)) {
+        // Explicit rejection means it was not delivered. Never retry an
+        // ambiguous network failure or another API error at this layer.
+        response = await send();
+      }
+    }
     if (!response.ok) {
       throw new Error(`TelegramAdapter.sendMessage failed: ${response.status}`);
     }
