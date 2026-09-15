@@ -31,6 +31,7 @@ export class SharePointLogger {
       // the Power Automate column mapping never breaks (F4).
       username: username ?? '',
       conversationId: state.conversationId,
+      sessionId: state.sessionId,
       tag: state.tag,
       // Explicit safety flag the daily staff-report flow filters on. Do NOT
       // infer this from conversationPhase — with the screener disabled, `tag`

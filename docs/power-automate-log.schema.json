@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Existing CareyBot conversation log payload — not a dedicated alert event",
+  "type": "object",
+  "required": ["platform", "userId", "conversationId", "crisisDetected", "timestamp"],
+  "properties": {
+    "platform": { "type": "string", "enum": ["telegram", "tiktok"] },
+    "userId": { "type": "string" },
+    "username": { "type": "string" },
+    "conversationId": { "type": "string" },
+    "sessionId": { "type": "string" },
+    "tag": { "type": ["string", "null"] },
+    "crisisDetected": { "type": "boolean" },
+    "conversationPhase": { "type": "string" },
+    "questionIndex": { "type": "number" },
+    "answers": { "type": "array", "items": { "type": "string" } },
+    "aiProvider": { "type": "string" },
+    "userMessage": { "type": "string" },
+    "aiResponse": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" }
+  }
+}

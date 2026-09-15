@@ -29,6 +29,8 @@ export interface CareyBotState {
   platform: Platform;
   userId: string;
   conversationId: string;
+  // App-owned log grouping ID. Absent in sessions saved before this field existed.
+  sessionId?: string;
 
   // RBAC
   isAuthorized: boolean;

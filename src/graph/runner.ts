@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import type { CareyBotState } from '../types/state';
 import type { NormalizedMessage } from '../types/platform';
 import { initialState } from '../types/state';
@@ -34,6 +35,13 @@ export async function processMessage(
     msg.userId,
     msg.conversationId ?? '',
   );
+
+  // Backfill old sessions without discarding their history. This ID is never
+  // taken from the incoming message or the AI provider's chat ID.
+  if (typeof base.sessionId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(base.sessionId)) {
+    base = { ...base, sessionId: randomUUID() };
+  }
 
   // A new SESSION is not a new USER. Age is persisted outside the 6-hour session
   // (F2), so hydrate it here — that is what lets a returning user skip the age
