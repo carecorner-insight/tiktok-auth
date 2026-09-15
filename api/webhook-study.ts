@@ -84,5 +84,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Respond immediately — platforms will retry if they don't receive 200 quickly
   res.status(200).json({ ok: true });
 
-  waitUntil(handleMessage(adapter, req.body, redis, { menuMode, logUrl }));
+  waitUntil(handleMessage(adapter, req.body, redis, { menuMode, logUrl, study: true }));
 }

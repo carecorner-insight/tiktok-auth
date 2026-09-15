@@ -4,8 +4,9 @@ Status: Power Automate was selected by the project owner. No flow has been creat
 edited or activated in Microsoft 365, and no Teams message has been sent. The team,
 channel, recipients, trigger and existing flow connection are not yet supplied.
 This is a setup guide, not a deployed alerting system.
-Maintenance-mode notes below describe separate, unpublished bot-control work;
-the session-ID-only change does not enable maintenance mode.
+Maintenance-mode notes below require the Bot Control release and its dedicated
+admin password setup; see section 10 of `docs/ARCHITECTURE_IMPLEMENTATION.md`.
+The session-ID change alone does not enable maintenance mode.
 
 ## Decisions needed before connecting
 

@@ -4,11 +4,13 @@ import { loadLiveCoachPrompt } from '../lib/promptStore';
 import { scenarioMenuEnabled } from '../lib/pivotFlags';
 import { SOCIAL_COACH_PROMPT } from '../config/socialCoachPrompt';
 import { GROWING_WE_COACH_PROMPT, GROWING_WE_PROMPT_VERSION } from '../config/growingWeCoachPrompt';
+import type { CoachModelSetting } from '../lib/botControl';
 
 export interface CoachMetadata {
   variant: 'growing-we' | 'triage';
   provider: 'direct' | 'aibots';
   model: string;
+  modelSource: 'deployment' | 'dashboard' | 'external';
   promptSource: 'bundled' | 'published' | 'external';
   promptVersion: string | number | null;
   promptHash: string | null;
@@ -25,13 +27,15 @@ export function coachProvider(): CoachMetadata['provider'] {
 }
 
 /** Shared by webhook and simulator. Never log the prompt body or credentials. */
-export async function resolveCoachConfig(redis: RedisClient): Promise<CoachConfig> {
+export async function resolveCoachConfig(redis: RedisClient, modelSetting?: CoachModelSetting): Promise<CoachConfig> {
   const pivot = scenarioMenuEnabled();
   const provider = coachProvider();
   const sha = process.env.VERCEL_GIT_COMMIT_SHA ?? '';
+  const selectedModel = pivot ? modelSetting?.model : null;
   const metadata: CoachMetadata = {
     variant: pivot ? 'growing-we' : 'triage', provider,
-    model: provider === 'direct' ? process.env.COACH_MODEL ?? process.env.QWEN_MODEL ?? 'qwen-plus' : 'externally-managed',
+    model: provider === 'direct' ? selectedModel ?? process.env.COACH_MODEL ?? process.env.QWEN_MODEL ?? 'qwen-plus' : 'externally-managed',
+    modelSource: provider === 'aibots' ? 'external' : selectedModel ? 'dashboard' : 'deployment',
     promptSource: 'external', promptVersion: null, promptHash: null,
     deploymentSha: /^[a-f\d]{7,40}$/i.test(sha) ? sha : null,
   };
