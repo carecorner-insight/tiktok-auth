@@ -49,6 +49,26 @@ describe('SharePointLogger', () => {
     await expect(svc.log(makeState(), 'msg', 'reply')).resolves.not.toThrow();
   });
 
+  it('reuses the persisted session ID across log entries without replacing transport IDs', async () => {
+    mockFetch.mockResolvedValue({ ok: true });
+    const svc = makeService();
+    const state = makeState({ sessionId: '36fce803-c797-45a6-8aa9-f810a5ad395b' });
+    await svc.log(state, 'first', 'reply');
+    await svc.log(state, 'second', 'reply');
+    for (const [, init] of mockFetch.mock.calls) {
+      expect(JSON.parse(init.body)).toMatchObject({
+        sessionId: state.sessionId,
+        conversationId: state.conversationId,
+      });
+    }
+  });
+
+  it('omits sessionId for legacy or error-path states instead of inventing a per-log ID', async () => {
+    mockFetch.mockResolvedValue({ ok: true });
+    await makeService().log(makeState(), 'message', 'reply');
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).not.toHaveProperty('sessionId');
+  });
+
   it('does not throw if the webhook returns a non-ok response', async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 500 });
     const svc = makeService();

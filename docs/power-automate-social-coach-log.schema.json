@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "userId": { "type": "string" },
+    "username": { "type": "string" },
+    "conversationId": { "type": "string" },
+    "sessionId": { "type": "string" },
+    "tag": { "type": ["string", "null"] },
+    "crisisDetected": { "type": "boolean" },
+    "conversationPhase": { "type": "string" },
+    "aiProvider": { "type": "string" },
+    "userMessage": { "type": "string" },
+    "aiResponse": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" }
+  },
+  "required": ["userId", "crisisDetected", "userMessage", "aiResponse", "timestamp"]
+}

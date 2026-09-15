@@ -1,9 +1,11 @@
+import { randomUUID } from 'crypto';
 import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { ageCheckNode } from './ageCheckNode';
 
 export function restartNode(_state: CareyBotState): NodeResult {
   return {
+    sessionId: randomUUID(),
     age: null,
     questionIndex: 0,
     answers: [],
