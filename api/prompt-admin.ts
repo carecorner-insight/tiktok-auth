@@ -1,7 +1,8 @@
 import { timingSafeEqual } from 'crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-import { getRedis } from '../src/lib/redis';
+import { getRedis, getControlRedis } from '../src/lib/redis';
+import { readCoachModel } from '../src/lib/botControl';
 import {
   getStoredPrompt,
   saveCoachPrompt,
@@ -50,7 +51,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') {
     const [live, history] = await Promise.all([getStoredPrompt(redis), listPromptHistory(redis)]);
     const bundled = scenarioMenuEnabled() ? GROWING_WE_COACH_PROMPT : SOCIAL_COACH_BASE_PROMPT;
-    const effective = await resolveCoachConfig(redis);
+    let model;
+    try { model = scenarioMenuEnabled() && coachProvider() === 'direct' ? await readCoachModel(getControlRedis()) : undefined; }
+    catch { return res.status(503).json({ error: 'Effective model configuration is unavailable' }); }
+    const effective = await resolveCoachConfig(redis, model);
     return res.status(200).json({
       live, // null → the bundled default prompt is serving
       bundled: {

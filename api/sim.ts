@@ -1,12 +1,14 @@
 import { timingSafeEqual } from 'crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-import { getRedis } from '../src/lib/redis';
+import { getRedis, getControlRedis } from '../src/lib/redis';
+import { BotPausedError, BotTurnControl, MAINTENANCE_NOTICE, readCoachModel } from '../src/lib/botControl';
+import { scenarioMenuEnabled } from '../src/lib/pivotFlags';
 import { processMessage } from '../src/graph/runner';
 import { SessionManager } from '../src/services/sessionManager';
 import { makeCareyAIClient } from '../src/services/makeCareyAIClient';
 import { makeSocialCoachClient } from '../src/services/makeSocialCoachClient';
-import { resolveCoachConfig } from '../src/services/resolveCoachConfig';
+import { coachProvider, resolveCoachConfig } from '../src/services/resolveCoachConfig';
 import { DirectLLMClient } from '../src/services/directLLMClient';
 import { INTENT_CLASSIFIER_PROMPT } from '../src/nodes/intentClassifierNode';
 import { getMenuMode } from '../src/lib/menuMode';
@@ -64,52 +66,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'userId is required' });
   }
 
-  const redis = getRedis();
-  const session = new SessionManager(redis);
-  // Per-request override lets the eval harness pin a mode and A/B the two UXes
-  // without touching the global flag (which the webhook and live UAT use).
-  const overrideMode =
-    body.menuMode === 'intent' || body.menuMode === 'numbered' ? body.menuMode : undefined;
-  const menuMode = overrideMode ?? (await getMenuMode(redis));
-
-  // Start a fresh conversation when requested (e.g. turn 0 of a run).
-  if (body.reset) {
-    await session.clear(platform, userId);
-  }
-
-  const coachConfig = await resolveCoachConfig(redis);
-  const services = {
-    // Force-authorized: the simulator uses synthetic user IDs that aren't in the
-    // SharePoint whitelist. This exercises the conversation flow, not RBAC.
-    whitelist: { isAuthorized: async () => true },
-    session,
-    aiBots: makeCareyAIClient(),
-    // Same provider selection as the live webhook, so sims exercise the real path.
-    socialCoach: makeSocialCoachClient(coachConfig),
-    intentLLM: new DirectLLMClient({
-      apiKey: process.env.QWEN_API_KEY ?? '',
-      baseURL: process.env.QWEN_BASE_URL ?? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-      model: process.env.INTENT_LLM_MODEL ?? 'qwen-turbo',
-      systemPrompt: INTENT_CLASSIFIER_PROMPT,
-    }),
-    menuMode,
-    typing: { sendTypingIndicator: async () => {} },
-    ageStore: {
-      get: (p: Platform, u: string) => getStoredAge(redis, p, u),
-      set: (p: Platform, u: string, a: number) => setStoredAge(redis, p, u, a),
-    },
-  };
-
-  const msg: NormalizedMessage = {
-    platform,
-    userId,
-    text,
-    timestamp: Date.now(),
-    raw: {},
-  };
-
+  const controlRedis = getControlRedis();
+  const control = await BotTurnControl.start(controlRedis);
+  const maintenance = () => res.status(503).json({ response: MAINTENANCE_NOTICE, maintenance: true });
+  if (!await control.active()) return maintenance();
   try {
+    const redis = getRedis();
+    const session = control.guardSession(new SessionManager(redis));
+    // Per-request override lets the eval harness pin a mode and A/B the two UXes
+    // without touching the global flag (which the webhook and live UAT use).
+    const overrideMode =
+      body.menuMode === 'intent' || body.menuMode === 'numbered' ? body.menuMode : undefined;
+    const menuMode = overrideMode ?? (await getMenuMode(redis));
+
+    // Start a fresh conversation when requested (e.g. turn 0 of a run).
+    if (body.reset) {
+      await session.clear(platform, userId);
+    }
+
+    const modelSetting = scenarioMenuEnabled() && coachProvider() === 'direct' ? await readCoachModel(controlRedis) : undefined;
+    const coachConfig = await resolveCoachConfig(redis, modelSetting);
+    const services = {
+      // Force-authorized: the simulator uses synthetic user IDs that aren't in the
+      // SharePoint whitelist. This exercises the conversation flow, not RBAC.
+      whitelist: { isAuthorized: async () => true },
+      session,
+      aiBots: control.guardClient(makeCareyAIClient()),
+      // Same provider selection as the live webhook, so sims exercise the real path.
+      socialCoach: control.guardClient(makeSocialCoachClient(coachConfig)),
+      intentLLM: control.guardClient(new DirectLLMClient({
+        apiKey: process.env.QWEN_API_KEY ?? '',
+        baseURL: process.env.QWEN_BASE_URL ?? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+        model: process.env.INTENT_LLM_MODEL ?? 'qwen-turbo',
+        systemPrompt: INTENT_CLASSIFIER_PROMPT,
+      })),
+      menuMode,
+      typing: { sendTypingIndicator: async () => {} },
+      ageStore: {
+        get: (p: Platform, u: string) => getStoredAge(redis, p, u),
+        set: async (p: Platform, u: string, a: number) => {
+          await control.assertActive();
+          await setStoredAge(redis, p, u, a);
+        },
+      },
+    };
+
+    const msg: NormalizedMessage = {
+      platform,
+      userId,
+      text,
+      timestamp: Date.now(),
+      raw: {},
+    };
+
+    await control.assertActive();
     const result = await processMessage(msg, services);
+    await control.assertActive();
     return res.status(200).json({
       response: result.response,
       coach: coachConfig.metadata,
@@ -124,7 +136,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     });
   } catch (err) {
+    if (err instanceof BotPausedError || !await control.active()) return maintenance();
     console.error('[sim] processMessage failed:', err);
-    return res.status(500).json({ error: 'processMessage failed', detail: String(err) });
+    return res.status(500).json({ error: 'Simulation failed' });
   }
 }

@@ -1,7 +1,9 @@
 import { waitUntil } from '@vercel/functions';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-import { getRedis, RedisClient } from '../src/lib/redis';
+import { getRedis, getControlRedis, RedisClient } from '../src/lib/redis';
+import { BotPausedError, BotTurnControl, MAINTENANCE_NOTICE, readCoachModel } from '../src/lib/botControl';
+import { scenarioMenuEnabled } from '../src/lib/pivotFlags';
 
 import { processMessage } from '../src/graph/runner';
 import { TikTokAdapter } from '../src/adapters/tiktok';
@@ -11,7 +13,7 @@ import { SessionManager } from '../src/services/sessionManager';
 import { SharePointLogger } from '../src/services/sharePointLogger';
 import { DemographicsLogger } from '../src/services/demographicsLogger';
 import { makeSocialCoachClient } from '../src/services/makeSocialCoachClient';
-import { makeCareyAIClient } from '../src/services/makeCareyAIClient';
+import { makeCareyAIClient, CareyAIClient } from '../src/services/makeCareyAIClient';
 import { DirectLLMClient } from '../src/services/directLLMClient';
 import { INTENT_CLASSIFIER_PROMPT } from '../src/nodes/intentClassifierNode';
 import type { IPlatformAdapter } from '../src/types/platform';
@@ -19,7 +21,7 @@ import type { Platform } from '../src/types/state';
 import { pushUatLog, providerFromChatId } from '../src/lib/uatLog';
 import { getMenuMode, type MenuMode } from '../src/lib/menuMode';
 import { getStoredAge, setStoredAge } from '../src/lib/ageStore';
-import { resolveCoachConfig } from '../src/services/resolveCoachConfig';
+import { coachProvider, resolveCoachConfig } from '../src/services/resolveCoachConfig';
 
 export const config = { runtime: 'nodejs', maxDuration: 60 };
 
@@ -101,6 +103,8 @@ async function withUserLock<T>(
 // Exported for api/webhook-study.ts, which runs the same pipeline against the
 // study configuration (prefixed Redis, study bot token, own log list).
 export interface HandleMessageOptions {
+  /** Set only by the separate study endpoint, never from incoming payloads. */
+  study?: boolean;
   /** Skip the Redis menu-mode lookup and pin a mode (study build). */
   menuMode?: MenuMode;
   /** Override the SharePoint log webhook; null disables logging. */
@@ -134,19 +138,43 @@ export async function handleMessage(
     if (isNew === null) return; // duplicate delivery
   }
 
+  const controlRedis = opts.study ? null : getControlRedis();
+  const control = controlRedis ? await BotTurnControl.start(controlRedis) : null;
+  let noticeSent = false;
+  const maintenance = async () => {
+    if (noticeSent) return;
+    noticeSent = true;
+    await adapter.sendMessage(msg.userId, MAINTENANCE_NOTICE, msg.conversationId);
+  };
+  const active = () => control ? control.active() : Promise.resolve(true);
+  if (!await active()) { await maintenance(); return; }
+  const guard = (client: CareyAIClient) => control ? control.guardClient(client) : client;
+  const reply = async (text: string) => {
+    if (!await active()) { await maintenance(); return false; }
+    await adapter.sendMessage(msg.userId, text, msg.conversationId);
+    return true;
+  };
+
   const tLock = Date.now();
   await withUserLock(redis, msg.platform, msg.userId, async () => {
+    if (!await active()) { await maintenance(); return; }
     console.log(`[perf] lock acquire: ${Date.now() - tLock}ms`);
     const menuMode = opts.menuMode ?? (await getMenuMode(redis));
-    const coachConfig = await resolveCoachConfig(redis);
+    let modelSetting;
+    try {
+      modelSetting = controlRedis && scenarioMenuEnabled() && coachProvider() === 'direct'
+        ? await readCoachModel(controlRedis) : undefined;
+    } catch { await maintenance(); return; }
+    const coachConfig = await resolveCoachConfig(redis, modelSetting);
     console.log('[coach-config]', { ...coachConfig.metadata, menuMode });
+    const session = new SessionManager(redis);
     const services = {
       whitelist: new WhitelistService(redis, fetchWhitelistStatus),
-      session: new SessionManager(redis),
+      session: control ? control.guardSession(session) : session,
       menuMode,
       // Carey's client — AIBots+Dify by default, or direct Qwen when
       // USE_DIRECT_LLM=true (efficacy experiment; off by default).
-      aiBots: makeCareyAIClient(),
+      aiBots: guard(makeCareyAIClient()),
       // Growing We social coach. Direct Qwen by default (holds our own prompt
       // + the [CRISIS]/[REFERRAL] tag contract); COACH_PROVIDER=aibots switches
       // to the seeded Directus bot with its Dify fallback. An admin-published
@@ -154,21 +182,26 @@ export async function handleMessage(
       // problem falls back to bundled (loadLiveCoachPrompt never throws). The
       // study endpoint forces DYNAMIC_COACH_PROMPT=false, so it always gets
       // the bundled prompt.
-      socialCoach: makeSocialCoachClient(coachConfig),
+      socialCoach: guard(makeSocialCoachClient(coachConfig)),
       // Intent classification for the open-ended post-screener entry — a
       // direct OpenAI-compatible call (single-token output, no AIBots session).
-      intentLLM: new DirectLLMClient({
+      intentLLM: guard(new DirectLLMClient({
         apiKey: process.env.QWEN_API_KEY ?? '',
         baseURL: process.env.QWEN_BASE_URL ?? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
         model: process.env.INTENT_LLM_MODEL ?? 'qwen-turbo',
         systemPrompt: INTENT_CLASSIFIER_PROMPT,
-      }),
-      typing: adapter,
+      })),
+      typing: { sendTypingIndicator: async (userId: string) => {
+        if (await active()) await adapter.sendTypingIndicator(userId);
+      } },
       // Persistent per-user age (F2) — survives the 6h session, so a returning
       // user is never re-asked and referral triage still works.
       ageStore: {
         get: (p: Platform, u: string) => getStoredAge(redis, p, u),
-        set: (p: Platform, u: string, a: number) => setStoredAge(redis, p, u, a),
+        set: async (p: Platform, u: string, a: number) => {
+          if (control) await control.assertActive();
+          await setStoredAge(redis, p, u, a);
+        },
       },
     };
 
@@ -186,8 +219,9 @@ export async function handleMessage(
       result = await processMessage(msg, services);
       responseText = result.response;
     } catch (err) {
+      if (err instanceof BotPausedError || !await active()) { await maintenance(); return; }
       console.error('[webhook] processMessage failed:', err);
-      await adapter.sendMessage(msg.userId, responseText, msg.conversationId);
+      if (!await reply(responseText)) return;
     
       const fallbackState = await services.session.load(msg.platform, msg.userId);
       if (logger && fallbackState) {
@@ -218,11 +252,11 @@ export async function handleMessage(
       return;
     }
 
-    await adapter.sendMessage(msg.userId, result.response, msg.conversationId);
+    if (!await reply(result.response)) return;
 
     // Send user ID as a separate message so unauthorized users can long-press to copy it
     if (!result.state.isAuthorized) {
-      await adapter.sendMessage(msg.userId, msg.userId, msg.conversationId);
+      if (!await reply(msg.userId)) return;
     }
 
     // Await: the user already has their reply (sendMessage above), so this adds

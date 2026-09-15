@@ -151,88 +151,256 @@ Pre-existing release risks remain:
 
 Rollback code and any subsequently published prompt independently but as a coordinated release. Restoring an older deployment alone does not restore a Redis-published prompt. Preserve sessions; the optional selection marker is additive and old code ignores unknown JSON fields. No session reset or data deletion is required for this implementation. The release-candidate changes are isolated on `codex/careychats-comment-fixes`; the branch push does not merge them into `main`.
 
-## 10. Diagrams
+## 10. Bot Control and model selection
 
-### Runtime architecture
+Release package approved for merge on 15 September 2026. Deployment alone does
+not provision the dedicated admin password: configure `BOT_CONTROL_TOKEN` as a
+Production Secret in Vercel before the production build. Use a different secret
+for Preview when testing there. Without it, the controls API returns 503 and the
+page cannot be unlocked; normal bot operation keeps its existing default mode.
+
+`public/bot-control.html` is linked from Staff tools and the UAT page. It manages
+the main bot only, not the NUS study endpoint. The existing Capture toggle still
+controls only logging. The new `/api/bot-control` requires a dedicated
+`BOT_CONTROL_TOKEN` in `x-bot-control-token`; query tokens are not accepted.
+Use a cryptographically random admin secret (at least 32 characters), configured
+server-side per environment, and share it only with authorised operators. Never
+put it in a URL or committed file. The UI retains it in memory only and locks on
+reload. This is shared-secret administration, not individual staff RBAC/audit.
+
+### Maintenance behaviour
+
+OFF sends the fixed `MAINTENANCE_NOTICE` from `src/lib/botControl.ts`, without AI,
+crisis assessment or a new saved conversation turn. The existing platform update
+deduplication prevents repeats of the same update. Distinct messages each get a
+notice; no maintenance-period backlog is replayed on ON. The notice states that
+messages will not be answered later and directs urgent needs to real-world help.
+Platform retention and infrastructure request logs are not disabled.
+
+Mode state has no TTL. Missing state preserves existing ON behaviour; malformed
+or unavailable state blocks processing and uses maintenance fallback. A dedicated
+Redis connection bounds readiness/commands and disables offline queuing and
+automatic replay of unacknowledged commands,
+so a disconnected client does not queue a stale ON write. The page reports
+UNKNOWN/unconfirmed saves rather than claiming a successful write on failure.
+
+The state revision fences previously admitted turns across OFF/ON. Guards run
+before AI client entry, typing, session writes and outgoing messages. A blocked
+turn gets the fixed notice instead of an unsent generated reply. Already-started
+provider operations, Redis writes and platform sends cannot be recalled: there
+is still a final-check/network-send race. A reply may already be persisted before
+OFF blocks delivery; the switch is not a transactional rollback mechanism.
+
+Control keys are separate for production, preview branch and development. Preview
+ref hashes remain stable across deploys; mode and model use independent records,
+so a model save cannot overwrite OFF. This isolates settings, not shared bot
+tokens or ordinary conversation Redis keys. Isolated test credentials are still
+required. Removing enforcement code while relying on OFF would re-enable the bot.
+
+### Qwen model selection
+
+The allowlisted dropdown offers `qwen-plus`, `qwen-flash`, `qwen-max` and Restore
+deployment default. Account/region availability, cost and coaching quality must
+be verified before live use; no synthetic live model calls were made in this work.
+The catalogue is intentionally small and is not a claim to list the newest Qwen
+models. [Alibaba's documented batch-compatible model IDs](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/batch-inference)
+include these aliases; the [current catalogue](https://www.alibabacloud.com/help/en/model-studio/models)
+also contains newer versioned families.
+
+The selection affects only direct main coaching from the next resolved turn,
+without changing prompt selection, history, API keys, endpoint, safety classifier,
+general/crisis-support model, or study settings. It is disabled for AIBots and
+triage. The webhook, simulator and prompt-admin effective metadata use the saved
+model setting; `modelSource` records dashboard/deployment/external ownership.
+In-flight replies may still use the prior model. Invalid model state blocks main
+coaching instead of silently using a different selected model.
+
+### Verification and remaining setup
+
+Run `npm test -- --runInBand --testPathPattern='(botControl|botKillSwitch|controlRedis|staffPage).test.ts'`
+alongside both typechecks and the existing comments regression command. Tests
+cover static-only OFF, old-turn fencing, study exclusion, model/state independence,
+authentication, corruption, Redis readiness/timeouts, and safe callback rendering.
+Release verification: **42 control tests across 5 suites pass**, plus the 13
+session-ID integration tests. Both typechecks and the 239 comments regression
+tests pass. The full suite, including the session-ID update, now has
+**460 passing / 9 failing executed tests and 39 passing / 10 failing suites**;
+the failing files and assertions match the prior baseline exactly.
+The homepage OAuth query rendering was escaped because the new controls share
+its origin. The control page adds CSP, no-referrer and anti-framing protections;
+the server checks authentication and allowlisted inputs independently of the UI.
+
+An isolated localhost preview exercises the real control API with in-memory Redis
+and a synthetic password. Browser checks verified unlock, OFF, a saved Qwen Flash
+selection while still OFF, reload/re-authentication and persisted settings. No
+production settings, provider account models, Telegram messages or Teams posts
+were changed. A live preview rollout still needs BOT_CONTROL_TOKEN and UAT.
+
+Power Automate delivery remains unconnected pending the team/channel, recipients,
+trigger and authenticated flow. See `docs/POWER_AUTOMATE_TEAMS_ALERTS.md` and the
+existing-log JSON schema; these are preparation artifacts, not a working Teams
+notification feature. Existing webhook authentication and delivery/logging risks
+remain open and are not waived by this control implementation.
+
+## 11. Architecture diagrams
+
+Revised 14 September 2026. Each architecture view answers one structural question:
+**what exists, where it lives, and what it depends on**. Arrows describe interfaces
+or dependencies, not the order of a conversation. Return values are omitted unless
+the two-way interface matters. Boxes are system boundaries, not a claim that all
+authentication/security concerns in section 9 have been resolved.
+
+The core views describe the repository architecture, not a live deployment
+inventory. Bot Control requires the environment setup in section 10. The proposed Teams
+alert queue and retry flows are not implemented and are not shown as existing
+components.
+
+### 11.1 Runtime architecture — systems and deployment boundary
+
+CareyBot is one application deployed on Vercel, with separate API functions and
+shared TypeScript modules. Redis, AI services and Microsoft 365 integrations are
+external dependencies; LangGraph is a library inside the application, not another
+hosted service.
 
 ```mermaid
-flowchart TD
-    Telegram[Telegram update] --> Webhook[Webhook and adapter]
-    Sim[Authenticated simulator] --> Runner[Conversation runner]
-    Webhook --> Runner
-    Config[Shared coach configuration] --> Webhook
-    Config --> Sim
-    Redis[(Redis sessions and prompt store)] --> Runner
-    Redis --> Config
-    Runner --> Graph[LangGraph routing]
-    Graph --> Coach[Coaching node]
-    Graph --> Static[Deterministic menu, referral or first safety response]
-    Coach --> Provider[Direct client or AIBots with Dify fallback]
-    Provider --> Tags[Parse safety and referral signals]
-    Tags -->|Safety or referral signal| Static
-    Tags -->|Ordinary reply| Persist[Append reply and save session]
-    Static --> Persist
-    Persist --> Redis
-    Persist --> Result[Runner result]
-    Result --> Format[Telegram plain text and bold entities]
-    Result --> SimReply[Simulation response and metadata]
-    Format --> User[User receives message]
+%%{init: {"themeVariables": {"fontSize": "18px"}, "flowchart": {"curve": "linear", "nodeSpacing": 35, "rankSpacing": 45}}}%%
+flowchart TB
+    Channels["Messaging platforms<br/>Telegram / TikTok"]
+    Staff["Staff browser<br/>Admin / simulation / logs"]
+
+    subgraph Vercel["Vercel deployment"]
+        App["CareyBot application<br/>Web pages + serverless APIs"]
+    end
+
+    Redis[("Redis<br/>State + configuration")]
+    AI["AI services<br/>Qwen / AIBots / Dify"]
+    Flows["Power Automate<br/>Existing integrations"]
+    SharePoint["SharePoint<br/>Staff records"]
+
+    Channels <-->|Webhooks / replies| App
+    Staff <-->|HTTPS| App
+    App -->|State / config| Redis
+    App -->|Provider APIs| AI
+    App -->|Logs / lookups| Flows
+    Flows -->|Records| SharePoint
 ```
 
-### How a number gets its meaning
+The AI box groups supported integrations, not a requirement to call all three
+providers. Power Automate here means the existing logging, whitelist and other
+configured integrations; it does **not** imply Teams alert delivery is connected.
+
+### 11.2 Inside the application — component responsibilities
+
+These are code modules within the Vercel application, not separate microservices.
+Detailed responsibilities are kept outside the diagram so labels remain readable.
+
+| Component | Owns | Main source locations |
+|---|---|---|
+| API and transport layer | Main/study webhooks, staff endpoints, simulator, platform message formatting | `api/`, `src/adapters/`, `public/` |
+| Conversation runtime | State-driven intake, menus, coaching, referral and safety handlers | `src/graph/`, `src/nodes/` |
+| Coach configuration | Effective provider/model/prompt and configuration metadata | `src/services/resolveCoachConfig.ts`, `src/config/` |
+| Persistence | Encrypted sessions, stored age, published prompts and UAT records | `src/services/sessionManager.ts`, `src/lib/` |
+| Integration clients | AI requests, provider recovery and Power Automate log payloads | `src/services/` |
+
+Main and study use separate webhook functions and configurations. Study Redis
+keys are prefixed; the runtime code is shared. Shared code does not mean shared
+conversation state. See section 10 for the main-bot controls.
+
+### 11.3 Prompt architecture — sources and consumers
+
+The shared resolver is the dependency between request handlers and configuration
+sources. This is a dependency map; selection precedence remains in section 6.
 
 ```mermaid
-flowchart TD
-    Input[Latest user message] --> Override{Restart or crisis override?}
-    Override -->|Yes| Special[Restart or emergency handler]
-    Override -->|No| Referral{Awaiting referral age?}
-    Referral -->|Yes| Age[Consume age-band answer or explicit navigation]
-    Referral -->|No| Menu{In global menu?}
-    Menu -->|Yes| Choice[Validate whole-message choice]
-    Choice -->|Pivot 1 to 6| Entry[Set scenario and one-turn selection marker]
-    Choice -->|Invalid| ReMenu[Present correct menu]
-    Menu -->|No| Nav{Explicit menu command?}
-    Nav -->|Yes| ReMenu
-    Nav -->|No| Local[Keep scenario; send original answer with history]
-    Entry --> Coach[Coach acts within chosen scenario]
-    Local --> Coach
+%%{init: {"themeVariables": {"fontSize": "18px"}, "flowchart": {"curve": "linear", "nodeSpacing": 35, "rankSpacing": 45}}}%%
+flowchart TB
+    Handlers["Webhook / simulator<br/>Prompt admin metadata"]
+    Resolver["Coach configuration<br/>Shared resolver"]
+    Published[("Redis<br/>Published prompt")]
+    Bundles["Code bundle<br/>Default prompts"]
+    Environment["Vercel settings<br/>Provider / model defaults"]
+
+    Handlers -->|Uses| Resolver
+    Resolver -->|Reads| Published
+    Resolver -->|Imports| Bundles
+    Resolver -->|Reads| Environment
 ```
 
-### Provider recovery preserves the answer
+The Prompt Editor writes published text through `/api/prompt-admin`, not through
+Git. On the direct-provider path, a valid enabled published prompt overrides the
+bundle. AIBots/Dify use their externally configured prompts instead. The study
+defaults disable published prompt loading.
+
+The model selector supplies an additional model override to the resolver;
+it is shown separately below. Existing prompt keys are **not** environment-scoped:
+preview and production can share a published prompt if they share Redis.
+
+### 11.4 Bot Control architecture
+
+Staff manage settings through an authenticated API. The main runtime depends on
+those saved settings; the page does not call Qwen or change model weights.
 
 ```mermaid
+%%{init: {"themeVariables": {"fontSize": "18px"}, "flowchart": {"curve": "linear", "nodeSpacing": 35, "rankSpacing": 45}}}%%
+flowchart TB
+    Page["Bot Control page<br/>Staff browser"]
+    API["Bot Control API<br/>Header authentication"]
+    Runtime["Main bot runtime<br/>Turn guard + configuration"]
+    Settings[("Redis control settings<br/>Mode record / model record")]
+
+    Page -->|HTTPS| API
+    API -->|Read / write| Settings
+    Runtime -->|Read| Settings
+```
+
+Mode and model are separate records, scoped by environment and preview branch.
+They live in the configured Redis database, not in two new databases. The study
+endpoint is outside this control scope. This settings isolation does not isolate
+shared bot credentials or the existing ordinary session/prompt keys.
+
+### 11.5 Behaviour references — separate from architecture
+
+#### How a number gets its meaning
+
+| Current context | Meaning of the number |
+|---|---|
+| Global menu | A validated scenario/service choice |
+| Active coaching | An answer to the coach's latest question; preserve the scenario and original input |
+| Pending referral age | An age-band answer, not a scenario selection |
+
+Restart, explicit navigation and crisis overrides are described in sections 3–5;
+they are behavioural rules, not additional architectural components.
+
+#### Provider recovery — interaction example
+
+Only the AIBots-to-Dify fallback path is shown. The original answer and supplied
+history survive provider recovery; a new provider session is not a new user
+conversation.
+
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "width": 120, "actorMargin": 30, "actorFontSize": 16, "messageFontSize": 16, "noteFontSize": 16}}}%%
 sequenceDiagram
-    participant U as User
-    participant G as Graph and coach node
+    participant C as Coach node
     participant F as Fallback client
     participant A as AIBots
     participant D as Dify
-    U->>G: 3, answering the latest coaching question
-    G->>F: Current text + history + optional continuation prime
-    F->>A: Try primary with supplied context
-    A-->>F: Provider unavailable
-    F->>D: Create conversation and prime with history
-    F->>D: Send original current input: 3
-    D-->>F: Reply and conversation ID
-    F-->>G: Reply and Dify-owned ID
-    G-->>U: Continue the selected choice
-    Note over G,D: A new provider session does not restart the user conversation
+
+    C->>F: Answer 3 + context
+    F->>A: Primary request
+    A-->>F: Unavailable
+    F->>D: New session + context
+    F->>D: Original answer: 3
+    D-->>F: Reply + session ID
+    F-->>C: Reply + Dify ID
 ```
 
-### Effective prompt selection
+#### Availability contract — Bot Control
 
-```mermaid
-flowchart TD
-    Resolve[Resolve coach configuration] --> Provider{Configured provider?}
-    Provider -->|AIBots and Dify| External[Externally seeded prompts; version and hash unknown]
-    Provider -->|Direct| Live{Enabled, valid published prompt?}
-    Live -->|Yes| Published[Published prompt plus existing tag assembly]
-    Live -->|No| Variant{Product variant?}
-    Variant -->|Pivot| Pivot[Growing We v2 bundle]
-    Variant -->|Triage or study| Study[Unchanged Carey v9 bundle]
-    Published --> Identity[Source, version and exact prompt hash]
-    Pivot --> Identity
-    Study --> Identity
-    Identity --> Both[Same resolved configuration for webhook and simulator]
-    External --> Both
-```
+| Condition | Runtime behaviour |
+|---|---|
+| ON, readable settings, unchanged revision | Normal processing using the selected configuration |
+| OFF or unreadable mode | Fixed maintenance notice; no new AI call or saved conversation turn |
+| Mode revision changes during a turn | Subsequent guarded work is blocked; already-started operations cannot be recalled |
+| Study endpoint | Existing study behaviour, unaffected by Bot Control |
+
+See section 10 for guard locations, delivery races and model-setting validation.

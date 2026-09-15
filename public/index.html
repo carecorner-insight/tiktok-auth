@@ -106,6 +106,7 @@
     <div class="tools">
         <h2>Staff tools</h2>
         <div class="tool-grid">
+            <a href="bot-control.html"><b>Bot Control</b><span>Pause coaching and choose the Qwen model</span></a>
             <a href="uat-logs.html"><b>UAT Live Log</b><span>Watch test conversations as they happen</span></a>
             <a href="eval-dashboard.html"><b>Eval Dashboard</b><span>Automated persona-eval results and trends</span></a>
             <a href="label.html"><b>Reply Review</b><span>Rate CareyBot replies against the clinical rubric</span></a>
@@ -117,10 +118,15 @@
     <script>
         // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
-        const state = urlParams.get('state');
-        const error = urlParams.get('error');
-        const errorDescription = urlParams.get('error_description');
+        // The staff tools share this origin: callback data must never run script.
+        function escapeHtml(value) {
+            return value === null ? null : value.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        const code = escapeHtml(urlParams.get('code'));
+        const state = escapeHtml(urlParams.get('state'));
+        const error = escapeHtml(urlParams.get('error'));
+        const errorDescription = escapeHtml(urlParams.get('error_description'));
 
         const resultDiv = document.getElementById('result');
 

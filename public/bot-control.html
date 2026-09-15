@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'" />
+  <title>CareyBot — Bot Control</title>
+  <style>
+    :root { color-scheme: light; --ink:#24322c; --muted:#5d6d66; --green:#2e7466; --border:#dbe3e0; }
+    * { box-sizing:border-box; } [hidden] { display:none!important; }
+    body { margin:0; font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#f3f6f5; color:var(--ink); }
+    header { background:white; border-bottom:1px solid var(--border); padding:18px max(20px,calc((100% - 900px)/2)); display:flex; justify-content:space-between; gap:20px; align-items:center; }
+    header strong { display:block; font-size:20px; } small,.muted { color:var(--muted); }
+    a { color:var(--green); } main { max-width:940px; margin:auto; padding:28px 20px; }
+    .card { background:white; border:1px solid var(--border); border-radius:14px; padding:24px; margin-bottom:20px; }
+    #gate { max-width:480px; margin:30px auto; } h1 { font-size:25px; margin:0 0 8px; } h2 { font-size:20px; margin:0 0 12px; }
+    label { display:block; font-weight:600; margin:12px 0 6px; } input,select,button { font:inherit; border-radius:8px; padding:11px 14px; border:1px solid #b6c9c0; }
+    input,select { width:100%; background:white; color:var(--ink); } button { cursor:pointer; background:white; color:var(--green); font-weight:600; }
+    button.primary { background:var(--green); color:white; } button.off { color:#9b3a14; border-color:#cf9e89; }
+    button:disabled { opacity:.5; cursor:not-allowed; } :focus-visible { outline:3px solid #80b6a6; outline-offset:3px; }
+    .row { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:18px; }
+    .badge { display:inline-block; border-radius:30px; padding:5px 13px; background:#e9eceb; font-weight:700; }
+    .badge.on { background:#dcefe4; color:#14603a; } .badge.off { background:#f7ecd2; color:#6d4700; }
+    .notice { background:#f7ecd2; border-left:4px solid #b68125; border-radius:5px; padding:14px; }
+    #message { min-height:25px; white-space:pre-wrap; } #message.error { color:#b42331; }
+    #maintenanceCopy { white-space:pre-wrap; padding:16px; border:1px solid var(--border); border-radius:8px; background:#fafcfb; }
+    #target,#scope { overflow-wrap:anywhere; } dl { display:grid; grid-template-columns:150px 1fr; gap:8px; } dd { margin:0; overflow-wrap:anywhere; } dt { color:var(--muted); }
+    @media(max-width:540px) { header { padding:14px 20px; } .card { padding:18px; } dl { grid-template-columns:1fr; gap:2px; } dd { margin-bottom:12px; } .row button { flex:1; } }
+  </style>
+  <script src="bot-control.js" defer></script>
+</head>
+<body>
+  <header><div><strong>Bot Control</strong><small>CareyBot · Care Corner INSIGHT</small></div><a href="index.html">Staff tools</a></header>
+  <main>
+    <section id="gate" class="card">
+      <h1>Manage Carey</h1><p class="muted">Pause coaching or select its Qwen model. Use the dedicated Bot Control password from your project administrator—not the live-log token.</p>
+      <label for="password">Bot Control password</label><input id="password" type="password" autocomplete="off" maxlength="512" />
+      <div class="row"><button id="login" class="primary">Open controls</button></div>
+    </section>
+    <p id="message" role="status" aria-live="polite"></p>
+    <div id="settings" hidden>
+      <section class="card"><h1>CareyChats operations</h1><p id="target"></p><dl><dt>Environment</dt><dd id="environment"></dd><dt>Control scope</dt><dd id="scope"></dd><dt>Deployment</dt><dd id="deployment"></dd></dl><button id="logout">Lock controls</button></section>
+      <section class="card">
+        <h2>Bot availability <span id="mode" class="badge">UNKNOWN</span></h2>
+        <p id="changed" class="muted"></p>
+        <p class="notice">OFF sends only the maintenance notice below. No AI or automated crisis assessment runs for new messages. Messages are not queued for later replies. This does not stop the separate study bot.</p>
+        <div id="maintenanceCopy"></div>
+        <div class="row"><button id="off" class="off">Turn OFF — maintenance</button><button id="on" class="primary">Turn ON — resume coaching</button></div>
+        <p class="muted"><small>Already-started requests may finish; delivered messages cannot be recalled. New settings are checked before sending further replies.</small></p>
+      </section>
+      <section class="card">
+        <h2>Coaching model</h2><p>Applies to the main direct-Qwen coach from its next turn. Conversation history and prompt are retained. The classifier, crisis-support provider and study bot are unchanged.</p>
+        <p>Currently effective: <strong id="effectiveModel">Unknown</strong></p>
+        <label for="model">Choose a model</label><select id="model"></select>
+        <p id="modelHelp" class="muted"></p>
+        <p class="notice">A model change can affect cost, speed and reply quality. These choices are not clinically validated or guaranteed available on your account. Test a preview before changing production.</p>
+        <button id="saveModel" class="primary">Save model</button>
+      </section>
+      <section class="card"><h2>Teams alerts</h2><p>Power Automate setup is pending. This page does not yet send Teams notifications. Your administrator must confirm the channel, people to mention, alert trigger and delivery checks.</p></section>
+    </div>
+  </main>
+</body>
+</html>
