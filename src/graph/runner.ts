@@ -3,8 +3,10 @@ import type { CareyBotState } from '../types/state';
 import type { NormalizedMessage } from '../types/platform';
 import { initialState } from '../types/state';
 import { buildGraph, type GraphServices } from './graph';
+import { newKpiState } from '../analytics/contract';
 
 interface RunnerServices extends GraphServices {
+  kpiContact?: { sessionId: string; startedAt: number; observed: boolean };
   session: GraphServices['session'] & {
     load(platform: CareyBotState['platform'], userId: string): Promise<CareyBotState | null>;
   };
@@ -36,11 +38,30 @@ export async function processMessage(
     msg.conversationId ?? '',
   );
 
+  // The contact is captured before coaching, including during maintenance.
+  // Reuse that session instead of generating a second ID on the first reply.
+  if (!existing && services.kpiContact) {
+    base = { ...base, sessionId: services.kpiContact.sessionId };
+  }
+
   // Backfill old sessions without discarding their history. This ID is never
   // taken from the incoming message or the AI provider's chat ID.
   if (typeof base.sessionId !== 'string' ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(base.sessionId)) {
-    base = { ...base, sessionId: randomUUID() };
+    base = { ...base, sessionId: services.kpiContact?.sessionId ?? randomUUID() };
+  }
+
+  if (services.kpi) {
+    const analytics = base.kpi ?? newKpiState(
+      services.kpiContact?.startedAt ?? msg.timestamp,
+      services.kpiContact?.observed ?? !existing,
+    );
+    base = { ...base, kpi: { ...analytics, supportSource: base.awaitingReferralAge ? analytics.supportSource : 'missing', facts: [] } };
+  } else if (base.kpi) {
+    // Disabling collection (or losing its storage) must also stop questions
+    // already bound in a saved session. Otherwise a later "2" could still be
+    // consumed as feedback even though the measurement pipeline is off.
+    base = { ...base, kpi: undefined };
   }
 
   // A new SESSION is not a new USER. Age is persisted outside the 6-hour session
@@ -51,7 +72,6 @@ export async function processMessage(
     if (stored !== null) base = { ...base, age: stored };
   }
 
-  console.log('[debug] incoming msg:', JSON.stringify(msg.text));
   console.log('[debug] state BEFORE graph:', JSON.stringify({
     conversationPhase: base.conversationPhase,
     questionIndex:     base.questionIndex,
@@ -84,7 +104,6 @@ export async function processMessage(
     selectedOption:    final.selectedOption,
     tag:               final.tag,
     crisisDetected:    final.crisisDetected,
-    pendingResponse:   final.pendingResponse?.slice(0, 80),
   }));
 
   // Persist a newly captured age so the next session (and the referral triage)

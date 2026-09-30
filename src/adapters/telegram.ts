@@ -38,6 +38,7 @@ export class TelegramAdapter implements IPlatformAdapter {
   }
 
   normalizeMessage(raw: unknown): NormalizedMessage {
+    if (!raw || typeof raw !== 'object') throw new Error('TelegramAdapter: invalid update');
     const update = raw as Record<string, unknown>;
     const message = update['message'] as Record<string, unknown> | undefined;
 
@@ -45,6 +46,10 @@ export class TelegramAdapter implements IPlatformAdapter {
     if (typeof message['text'] !== 'string') throw new Error('TelegramAdapter: non-text message type not supported');
 
     const from = message['from'] as Record<string, unknown>;
+    if (!from || from['is_bot'] === true || !Number.isSafeInteger(from['id']) ||
+        !Number.isFinite(message['date']) || message['text'].length > 8192) {
+      throw new Error('TelegramAdapter: invalid sender or message');
+    }
     // Username only — first_name / last_name are deliberately NOT captured, to
     // keep the personal-data footprint on the permanent log to a minimum.
     const username = typeof from['username'] === 'string' ? from['username'] : undefined;

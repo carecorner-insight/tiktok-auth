@@ -4,6 +4,7 @@ import { TOTAL_QUESTIONS } from '../config/questionnaire';
 import { containsCrisisPhrase } from '../lib/crisisDetection';
 import { scenarioMenuEnabled } from '../lib/pivotFlags';
 import type { MenuMode } from '../lib/menuMode';
+import { parseAnswer } from '../analytics/coachMeasurement';
 
 // Triage build: three distinct lanes.
 const TRIAGE_OPTION_NODE: Record<number, string> = {
@@ -84,6 +85,13 @@ export function makeRouter(mode: MenuMode = 'intent') {
     // Referral age answers belong to the pending referral, not a coach's menu.
     if (scenarioMenuEnabled() && state.awaitingReferralAge) {
       return MENU_KEYWORDS.has(getLastUserInput(state)) ? 'menuPresenter' : 'resourceRedirectNode';
+    }
+
+    // Bound survey answers are not menu selections. Safety and referral-age
+    // handling above always take priority; arbitrary free text stays coaching.
+    if (state.kpi?.pendingQuestion && conversationPhase === 'option' &&
+        parseAnswer(state.kpi.pendingQuestion, state.messages[state.messages.length - 1]?.content ?? '') !== null) {
+      return 'kpiFeedback';
     }
 
     if (conversationPhase === 'menu') return 'intentClassifierNode';

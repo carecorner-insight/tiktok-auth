@@ -4,6 +4,7 @@
     "typecheck:api": "tsc --noEmit -p tsconfig.api.json",
     "test:comments": "jest --runInBand --testPathPattern='(commentRouting|conversationEntry|fallbackAIClient|resolveCoachConfig|telegram|intentClassifierNode|router|scenarioMenu|restartNode|directLLMClient|aiBotsClient|emergencyHandler|emergencyHandlerStaticFirst|studyMode|replyTags|promptStore|referralTag)\\.test\\.ts$'",
     "test": "jest",
+    "test:kpi": "jest --runInBand --testPathPattern='(analytics/.*|kpi|kpiCollection)\\.test\\.ts$'",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "simulate": "ts-node -r dotenv/config src/scripts/simulate-conversation.ts",
