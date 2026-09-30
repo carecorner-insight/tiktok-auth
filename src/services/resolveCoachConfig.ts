@@ -5,6 +5,7 @@ import { scenarioMenuEnabled } from '../lib/pivotFlags';
 import { SOCIAL_COACH_PROMPT } from '../config/socialCoachPrompt';
 import { GROWING_WE_COACH_PROMPT, GROWING_WE_PROMPT_VERSION } from '../config/growingWeCoachPrompt';
 import type { CoachModelSetting } from '../lib/botControl';
+import { KPI_PROMPT_CONTRACT } from '../analytics/coachMeasurement';
 
 export interface CoachMetadata {
   variant: 'growing-we' | 'triage';
@@ -27,7 +28,7 @@ export function coachProvider(): CoachMetadata['provider'] {
 }
 
 /** Shared by webhook and simulator. Never log the prompt body or credentials. */
-export async function resolveCoachConfig(redis: RedisClient, modelSetting?: CoachModelSetting): Promise<CoachConfig> {
+export async function resolveCoachConfig(redis: RedisClient, modelSetting?: CoachModelSetting, collectKpi = false): Promise<CoachConfig> {
   const pivot = scenarioMenuEnabled();
   const provider = coachProvider();
   const sha = process.env.VERCEL_GIT_COMMIT_SHA ?? '';
@@ -42,7 +43,8 @@ export async function resolveCoachConfig(redis: RedisClient, modelSetting?: Coac
   // External providers have seeded prompts; a local override is not applied.
   if (provider === 'aibots') return { metadata };
   const live = await loadLiveCoachPrompt(redis);
-  const systemPrompt = live?.prompt ?? (pivot ? GROWING_WE_COACH_PROMPT : SOCIAL_COACH_PROMPT);
+  const basePrompt = live?.prompt ?? (pivot ? GROWING_WE_COACH_PROMPT : SOCIAL_COACH_PROMPT);
+  const systemPrompt = collectKpi ? basePrompt + KPI_PROMPT_CONTRACT : basePrompt;
   return {
     systemPrompt,
     metadata: {

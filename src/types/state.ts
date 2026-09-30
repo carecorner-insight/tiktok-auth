@@ -25,6 +25,8 @@ export interface Message {
 }
 
 export interface CareyBotState {
+  // Social-coach measurement only; legacy and study sessions omit this field.
+  kpi?: import('../analytics/contract').CoachKpiState;
   // Identity
   platform: Platform;
   userId: string;

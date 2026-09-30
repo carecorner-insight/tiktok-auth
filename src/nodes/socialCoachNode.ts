@@ -4,6 +4,8 @@ import { getLastUserInput } from '../types/nodes';
 import { parseReplyTags } from '../lib/replyTags';
 import { scenarioMenuEnabled } from '../lib/pivotFlags';
 import { scenarioPrime } from '../config/questionnaire';
+import { startScenario, explicitlyRequestsSupport } from '../analytics/contract';
+import { parseMeasurement, applyMeasurement, READINESS_QUESTION, type CoachMeasurementServices } from '../analytics/coachMeasurement';
 
 // Menu option 2 → the Growing We Social Coach. This is a SEPARATE bot on the
 // AIBots/Directus platform (its own seeded system prompt), reached via a second
@@ -24,7 +26,7 @@ interface ITypingIndicator {
   sendTypingIndicator(userId: string): Promise<void>;
 }
 
-export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
+export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITypingIndicator, measurementServices?: CoachMeasurementServices) {
   return async function socialCoachNode(state: CareyBotState): Promise<NodeResult> {
     const userText = getLastUserInput(state);
     const rawText =
@@ -43,6 +45,15 @@ export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITyping
     // coach directly on that scenario instead of asking again (F6).
     const scenarioOption =
       scenarioMenuEnabled() && state.selectedOption ? state.selectedOption : null;
+
+    let analytics = state.kpi;
+    if (analytics && scenarioOption && (state.menuSelection || !analytics.scenarioRunId)) {
+      analytics = startScenario(analytics, scenarioOption, state.messages[state.messages.length - 1]?.timestamp ?? Date.now());
+      if (measurementServices?.scenarioStarted) await measurementServices.scenarioStarted({ ...state, kpi: analytics });
+    }
+    // Continuing normal conversation instead of answering is allowed. The
+    // unanswered response stays missing; never force a survey re-prompt.
+    if (analytics?.pendingQuestion) analytics = { ...analytics, pendingQuestion: null };
 
     const primeMessage = scenarioOption && state.menuSelection
       ? scenarioPrime(scenarioOption) + ` AGE: ${state.age ?? 'unknown'}. ` +
@@ -73,10 +84,26 @@ export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITyping
     const history = state.messages.slice(0, -1);
     try {
       const result = await aiBotsClient.chat(effectiveChatId, rawText, primeMessage, history);
-      const { reply, isCrisis, suggestsReferral } = parseReplyTags(result.reply);
+      // Preserve safety tags even if the model accidentally puts one inside
+      // its metadata block. Bookkeeping must never suppress a crisis signal.
+      const routing = parseReplyTags(result.reply);
+      const measured = analytics ? parseMeasurement(routing.reply) : { reply: routing.reply, measurement: null };
+      const { isCrisis, suggestsReferral } = routing;
+      const reply = measured.reply;
+      let response = reply;
+      if (analytics) {
+        const wasComplete = analytics.checkinReached;
+        analytics = applyMeasurement(analytics, measured.measurement, !isCrisis && !suggestsReferral);
+        if (!wasComplete && analytics.checkinReached) response = `${reply}\n\n${READINESS_QUESTION}`;
+        if (suggestsReferral && !isCrisis) {
+          analytics.supportSource = explicitlyRequestsSupport(rawText) ? 'user_requested' : 'bot_suggested';
+          analytics.facts.push({ eventType: 'referral_requested' });
+        }
+      }
       return {
+        ...(analytics ? { kpi: analytics } : {}),
         aiBotChatId: result.chatId,
-        pendingResponse: reply,
+        pendingResponse: response,
         // Keep the chosen scenario in the Growing We build; the triage build
         // only ever reaches the coach as option 2.
         selectedOption: scenarioOption ?? 2,

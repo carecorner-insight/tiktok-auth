@@ -4,6 +4,8 @@ import IoRedis from 'ioredis';
 // Matches the option-object style of @upstash/redis so callers don't care
 // which client sits underneath.
 export interface RedisClient {
+  /** Atomic KPI outbox operations. Optional for legacy study/test adapters. */
+  eval?(script: string, keys: string[], args: string[]): Promise<unknown>;
   get(key: string): Promise<string | null>;
   set(key: string, value: unknown, opts?: { ex?: number; nx?: boolean }): Promise<'OK' | null>;
   del(key: string): Promise<unknown>;
@@ -74,6 +76,11 @@ class RedisWrapper implements RedisClient {
 
   expire(key: string, seconds: number): Promise<unknown> {
     return this.client.expire(key, seconds);
+  }
+
+  async eval(script: string, keys: string[], args: string[]): Promise<unknown> {
+    await this.ready();
+    return this.client.eval(script, keys.length, ...keys, ...args);
   }
 }
 

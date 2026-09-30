@@ -22,6 +22,10 @@ import { pushUatLog, providerFromChatId } from '../src/lib/uatLog';
 import { getMenuMode, type MenuMode } from '../src/lib/menuMode';
 import { getStoredAge, setStoredAge } from '../src/lib/ageStore';
 import { coachProvider, resolveCoachConfig } from '../src/services/resolveCoachConfig';
+import { timingSafeEqual } from 'crypto';
+import { KpiCollector, collectionEnabled } from '../src/analytics/collector';
+import { initialState, type CareyBotState } from '../src/types/state';
+import { newKpiState } from '../src/analytics/contract';
 
 export const config = { runtime: 'nodejs', maxDuration: 60 };
 
@@ -139,15 +143,50 @@ export async function handleMessage(
   }
 
   const controlRedis = opts.study ? null : getControlRedis();
+  let collector: KpiCollector | null = null;
+  let contact: { sessionId: string; startedAt: number; observed: boolean; isNew: boolean } | undefined;
+  let measuredState: CareyBotState | null = null;
+  if (!opts.study && msg.platform === 'telegram' && collectionEnabled() && controlRedis) {
+    try {
+      collector = new KpiCollector(controlRedis, msg);
+      const age = await getStoredAge(controlRedis, msg.platform, msg.userId);
+      const existingMeasurementSession = await new SessionManager(controlRedis).load(msg.platform, msg.userId);
+      contact = await collector.activity(age, existingMeasurementSession);
+      measuredState = {
+        ...initialState(msg.platform, msg.userId, msg.conversationId ?? ''), age,
+        sessionId: contact.sessionId, kpi: newKpiState(contact.startedAt, contact.observed),
+      };
+    } catch {
+      console.error('[kpi] activity collection failed; coaching continues with a possible data gap');
+      if (collector) await collector.safely(async () => { throw new Error('Activity could not be saved'); });
+      collector = null;
+    }
+  }
+  const recordOutcome = async (delivery: 'sent' | 'maintenance' | 'failed') => {
+    if (!collector || !measuredState) return;
+    await collector.safely(() => collector!.completed(measuredState!, delivery, collector!.metadata));
+  };
+  const flushKpi = async () => {
+    if (collector) await collector.safely(() => collector!.outbox.flush());
+  };
   const control = controlRedis ? await BotTurnControl.start(controlRedis) : null;
   let noticeSent = false;
   const maintenance = async () => {
     if (noticeSent) return;
     noticeSent = true;
-    await adapter.sendMessage(msg.userId, MAINTENANCE_NOTICE, msg.conversationId);
+    try {
+      await adapter.sendMessage(msg.userId, MAINTENANCE_NOTICE, msg.conversationId);
+      await recordOutcome('maintenance');
+    } catch (error) {
+      await recordOutcome('failed');
+      throw error;
+    }
   };
   const active = () => control ? control.active() : Promise.resolve(true);
-  if (!await active()) { await maintenance(); return; }
+  if (!await active()) {
+    try { await maintenance(); } finally { await flushKpi(); }
+    return;
+  }
   const guard = (client: CareyAIClient) => control ? control.guardClient(client) : client;
   const reply = async (text: string) => {
     if (!await active()) { await maintenance(); return false; }
@@ -156,152 +195,190 @@ export async function handleMessage(
   };
 
   const tLock = Date.now();
-  await withUserLock(redis, msg.platform, msg.userId, async () => {
-    if (!await active()) { await maintenance(); return; }
-    console.log(`[perf] lock acquire: ${Date.now() - tLock}ms`);
-    const menuMode = opts.menuMode ?? (await getMenuMode(redis));
-    let modelSetting;
-    try {
-      modelSetting = controlRedis && scenarioMenuEnabled() && coachProvider() === 'direct'
-        ? await readCoachModel(controlRedis) : undefined;
-    } catch { await maintenance(); return; }
-    const coachConfig = await resolveCoachConfig(redis, modelSetting);
-    console.log('[coach-config]', { ...coachConfig.metadata, menuMode });
-    const session = new SessionManager(redis);
-    const services = {
-      whitelist: new WhitelistService(redis, fetchWhitelistStatus),
-      session: control ? control.guardSession(session) : session,
-      menuMode,
-      // Carey's client — AIBots+Dify by default, or direct Qwen when
-      // USE_DIRECT_LLM=true (efficacy experiment; off by default).
-      aiBots: guard(makeCareyAIClient()),
-      // Growing We social coach. Direct Qwen by default (holds our own prompt
-      // + the [CRISIS]/[REFERRAL] tag contract); COACH_PROVIDER=aibots switches
-      // to the seeded Directus bot with its Dify fallback. An admin-published
-      // prompt from the prompt store wins over the bundled one; any store
-      // problem falls back to bundled (loadLiveCoachPrompt never throws). The
-      // study endpoint forces DYNAMIC_COACH_PROMPT=false, so it always gets
-      // the bundled prompt.
-      socialCoach: guard(makeSocialCoachClient(coachConfig)),
-      // Intent classification for the open-ended post-screener entry — a
-      // direct OpenAI-compatible call (single-token output, no AIBots session).
-      intentLLM: guard(new DirectLLMClient({
-        apiKey: process.env.QWEN_API_KEY ?? '',
-        baseURL: process.env.QWEN_BASE_URL ?? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-        model: process.env.INTENT_LLM_MODEL ?? 'qwen-turbo',
-        systemPrompt: INTENT_CLASSIFIER_PROMPT,
-      })),
-      typing: { sendTypingIndicator: async (userId: string) => {
-        if (await active()) await adapter.sendTypingIndicator(userId);
-      } },
-      // Persistent per-user age (F2) — survives the 6h session, so a returning
-      // user is never re-asked and referral triage still works.
-      ageStore: {
-        get: (p: Platform, u: string) => getStoredAge(redis, p, u),
-        set: async (p: Platform, u: string, a: number) => {
-          if (control) await control.assertActive();
-          await setStoredAge(redis, p, u, a);
+  let enteredLock = false;
+  try {
+    await withUserLock(redis, msg.platform, msg.userId, async () => {
+      enteredLock = true;
+      if (!await active()) { await maintenance(); return; }
+      console.log(`[perf] lock acquire: ${Date.now() - tLock}ms`);
+      const menuMode = opts.menuMode ?? (await getMenuMode(redis));
+      let modelSetting;
+      try {
+        modelSetting = controlRedis && scenarioMenuEnabled() && coachProvider() === 'direct'
+          ? await readCoachModel(controlRedis) : undefined;
+      } catch { await maintenance(); return; }
+      const coachConfig = await resolveCoachConfig(redis, modelSetting, !!collector && !opts.study);
+      if (collector) collector.metadata = coachConfig.metadata;
+      console.log('[coach-config]', { ...coachConfig.metadata, menuMode });
+      const session = new SessionManager(redis);
+      const services = {
+        ...(collector ? { kpi: collector, kpiContact: contact } : {}),
+        whitelist: new WhitelistService(redis, fetchWhitelistStatus),
+        session: control ? control.guardSession(session) : session,
+        menuMode,
+        // Carey's client — AIBots+Dify by default, or direct Qwen when
+        // USE_DIRECT_LLM=true (efficacy experiment; off by default).
+        aiBots: guard(makeCareyAIClient()),
+        // Growing We social coach. Direct Qwen by default (holds our own prompt
+        // + the [CRISIS]/[REFERRAL] tag contract); COACH_PROVIDER=aibots switches
+        // to the seeded Directus bot with its Dify fallback. An admin-published
+        // prompt from the prompt store wins over the bundled one; any store
+        // problem falls back to bundled (loadLiveCoachPrompt never throws). The
+        // study endpoint forces DYNAMIC_COACH_PROMPT=false, so it always gets
+        // the bundled prompt.
+        socialCoach: guard(makeSocialCoachClient(coachConfig)),
+        // Intent classification for the open-ended post-screener entry — a
+        // direct OpenAI-compatible call (single-token output, no AIBots session).
+        intentLLM: guard(new DirectLLMClient({
+          apiKey: process.env.QWEN_API_KEY ?? '',
+          baseURL: process.env.QWEN_BASE_URL ?? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+          model: process.env.INTENT_LLM_MODEL ?? 'qwen-turbo',
+          systemPrompt: INTENT_CLASSIFIER_PROMPT,
+        })),
+        typing: { sendTypingIndicator: async (userId: string) => {
+          if (await active()) await adapter.sendTypingIndicator(userId);
+        } },
+        // Persistent per-user age (F2) — survives the 6h session, so a returning
+        // user is never re-asked and referral triage still works.
+        ageStore: {
+          get: (p: Platform, u: string) => getStoredAge(redis, p, u),
+          set: async (p: Platform, u: string, a: number) => {
+            if (control) await control.assertActive();
+            await setStoredAge(redis, p, u, a);
+          },
         },
-      },
-    };
+      };
 
-    const logUrl =
-      opts.logUrl !== undefined ? opts.logUrl : process.env.POWER_AUTOMATE_WEBHOOK_URL;
-    const logger = logUrl ? new SharePointLogger(logUrl) : null;
+      const logUrl =
+        opts.logUrl !== undefined ? opts.logUrl : process.env.POWER_AUTOMATE_WEBHOOK_URL;
+      const logger = logUrl ? new SharePointLogger(logUrl) : null;
 
-    // UAT live-log capture is enabled only when UAT_LOG_TOKEN is set, so no
-    // plaintext conversation content is buffered in production by default.
-    const uatEnabled = (await redis.get('uat:enabled')) === '1';
+      // UAT live-log capture is enabled only when UAT_LOG_TOKEN is set, so no
+      // plaintext conversation content is buffered in production by default.
+      const uatEnabled = (await redis.get('uat:enabled')) === '1';
 
-    let result;
-    let responseText = "I'm having trouble right now. Please try again in a moment.";
-    try {
-      result = await processMessage(msg, services);
-      responseText = result.response;
-    } catch (err) {
-      if (err instanceof BotPausedError || !await active()) { await maintenance(); return; }
-      console.error('[webhook] processMessage failed:', err);
-      if (!await reply(responseText)) return;
-    
-      const fallbackState = await services.session.load(msg.platform, msg.userId);
-      if (logger && fallbackState) {
-        // Await: fire-and-forget would be dropped when the serverless function
-        // freezes before the HTTP POST completes. logger.log never throws.
-        await logger.log(fallbackState, msg.text, responseText, msg.username);
+      let result;
+      let responseText = "I'm having trouble right now. Please try again in a moment.";
+      try {
+        result = await processMessage(msg, services);
+        responseText = result.response;
+      } catch (err) {
+        if (err instanceof BotPausedError || !await active()) { await maintenance(); return; }
+        console.error('[webhook] processMessage failed:', err);
+        if (!await reply(responseText)) return;
+
+        const fallbackState = await services.session.load(msg.platform, msg.userId);
+        if (fallbackState) measuredState = {
+          ...fallbackState, ...(fallbackState.kpi ? { kpi: { ...fallbackState.kpi, facts: [] } } : {}),
+        };
+        await recordOutcome('failed');
+        if (logger && fallbackState) {
+          // Await: fire-and-forget would be dropped when the serverless function
+          // freezes before the HTTP POST completes. logger.log never throws.
+          await logger.log(fallbackState, msg.text, responseText, msg.username);
+        }
+        if (uatEnabled) {
+          try {
+            await pushUatLog(redis, {
+              platform: msg.platform,
+              userId: msg.userId,
+              authorized: fallbackState?.isAuthorized ?? false,
+              userMessage: msg.text,
+              botReply: responseText,
+              phase: fallbackState?.conversationPhase ?? 'unknown',
+              tag: fallbackState?.tag ?? null,
+              crisis: fallbackState?.crisisDetected ?? false,
+              provider: providerFromChatId(fallbackState?.aiBotChatId),
+              latencyMs: Date.now() - tTotal,
+              error: true,
+              coach: coachConfig.metadata,
+            });
+          } catch (e) {
+            console.error('[uat] log push failed:', e);
+          }
+        }
+        return;
       }
+
+      measuredState = result.state;
+      const referral = collector ? await collector.safely(() => collector!.referral(result.state, result.response)) : null;
+      if (referral) result.response = referral.reply;
+      try {
+        if (!await reply(result.response)) return;
+      } catch (error) {
+        // A question generated by the graph is not an observed check-in until
+        // Telegram accepts the send. Do not bind a future number to an unsent ask.
+        if (result.state.kpi) {
+          const unsentCheckin = result.state.kpi.facts.some(fact => fact.eventType === 'checkin_reached');
+          result.state.kpi = {
+            ...result.state.kpi, pendingQuestion: null,
+            checkinReached: unsentCheckin ? false : result.state.kpi.checkinReached,
+          };
+          try { await services.session.save(result.state); } catch { /* original transport error takes precedence */ }
+        }
+        await recordOutcome('failed');
+        throw error;
+      }
+      if (collector) {
+        await collector.safely(() => collector!.completed(result.state, 'sent', coachConfig.metadata));
+        if (referral) await collector.safely(() => collector!.outbox.record(referral.event));
+      }
+
+      // Send user ID as a separate message so unauthorized users can long-press to copy it
+      if (!result.state.isAuthorized) {
+        if (!await reply(msg.userId)) return;
+      }
+
+      // Await: the user already has their reply (sendMessage above), so this adds
+      // no perceived latency, and awaiting prevents the log POST being dropped
+      // when the serverless function freezes. logger.log never throws.
+      if (logger) await logger.log(result.state, msg.text, result.response, msg.username);
+
       if (uatEnabled) {
         try {
           await pushUatLog(redis, {
             platform: msg.platform,
             userId: msg.userId,
-            authorized: fallbackState?.isAuthorized ?? false,
+            authorized: result.state.isAuthorized,
             userMessage: msg.text,
-            botReply: responseText,
-            phase: fallbackState?.conversationPhase ?? 'unknown',
-            tag: fallbackState?.tag ?? null,
-            crisis: fallbackState?.crisisDetected ?? false,
-            provider: providerFromChatId(fallbackState?.aiBotChatId),
+            botReply: result.response,
+            phase: result.state.conversationPhase,
+            tag: result.state.tag ?? null,
+            crisis: result.state.crisisDetected,
+            provider: providerFromChatId(result.state.aiBotChatId),
             latencyMs: Date.now() - tTotal,
-            error: true,
+            error: false,
             coach: coachConfig.metadata,
           });
         } catch (e) {
           console.error('[uat] log push failed:', e);
         }
       }
-      return;
-    }
 
-    if (!await reply(result.response)) return;
-
-    // Send user ID as a separate message so unauthorized users can long-press to copy it
-    if (!result.state.isAuthorized) {
-      if (!await reply(msg.userId)) return;
-    }
-
-    // Await: the user already has their reply (sendMessage above), so this adds
-    // no perceived latency, and awaiting prevents the log POST being dropped
-    // when the serverless function freezes. logger.log never throws.
-    if (logger) await logger.log(result.state, msg.text, result.response, msg.username);
-
-    if (uatEnabled) {
-      try {
-        await pushUatLog(redis, {
-          platform: msg.platform,
-          userId: msg.userId,
-          authorized: result.state.isAuthorized,
-          userMessage: msg.text,
-          botReply: result.response,
-          phase: result.state.conversationPhase,
-          tag: result.state.tag ?? null,
-          crisis: result.state.crisisDetected,
-          provider: providerFromChatId(result.state.aiBotChatId),
-          latencyMs: Date.now() - tTotal,
-          error: false,
-          coach: coachConfig.metadata,
-        });
-      } catch (e) {
-        console.error('[uat] log push failed:', e);
-      }
-    }
-
-    // Demographic capture — log the user's actual age once, deduped in Redis.
-    // The NX key persists ~1 year so a returning user isn't re-logged.
-    const demoUrl = process.env.DEMOGRAPHICS_WEBHOOK_URL;
-    if (demoUrl && result.state.age != null) {
-      try {
-        const demoKey = `demographic:${msg.platform}:${msg.userId}`;
-        const firstTime = await redis.set(demoKey, '1', { ex: 365 * 24 * 3600, nx: true });
-        if (firstTime !== null) {
-          await new DemographicsLogger(demoUrl).log(msg.platform, msg.userId, result.state.age);
+      // Demographic capture — log the user's actual age once, deduped in Redis.
+      // The NX key persists ~1 year so a returning user isn't re-logged.
+      const demoUrl = process.env.DEMOGRAPHICS_WEBHOOK_URL;
+      if (demoUrl && result.state.age != null) {
+        try {
+          const demoKey = `demographic:${msg.platform}:${msg.userId}`;
+          const firstTime = await redis.set(demoKey, '1', { ex: 365 * 24 * 3600, nx: true });
+          if (firstTime !== null) {
+            await new DemographicsLogger(demoUrl).log(msg.platform, msg.userId, result.state.age);
+          }
+        } catch (e) {
+          console.error('[demographics] dedup/log error:', e);
         }
-      } catch (e) {
-        console.error('[demographics] dedup/log error:', e);
       }
-    }
 
-    console.log(`[perf] handleMessage total: ${Date.now() - tTotal}ms`);
-  });
+      console.log(`[perf] handleMessage total: ${Date.now() - tTotal}ms`);
+    });
+    if (!enteredLock) await recordOutcome('failed');
+  } finally {
+    // External KPI delivery runs AFTER the user lock is released. A slow
+    // Microsoft flow must not make a quick participant reply get dropped, or
+    // delay the existing transcript/Teams-alert request behind analytics retries.
+    await flushKpi();
+  }
 }
 
 // ── Vercel handler ────────────────────────────────────────────────────────────
@@ -316,6 +393,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const platform = String(req.query['platform'] ?? '');
+  if (platform === 'telegram') {
+    const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (collectionEnabled() && !secret) return res.status(503).json({ error: 'Telegram sender verification must be configured before KPI collection' });
+    if (secret) {
+      const header = req.headers['x-telegram-bot-api-secret-token'];
+      const received = typeof header === 'string' ? Buffer.from(header) : Buffer.alloc(0);
+      const expected = Buffer.from(secret);
+      if (received.length !== expected.length || !timingSafeEqual(received, expected)) return res.status(401).json({ error: 'Unauthorized' });
+    }
+  }
   const redis = getRedis();
 
   let adapter: IPlatformAdapter;

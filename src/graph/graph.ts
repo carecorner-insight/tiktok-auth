@@ -22,6 +22,7 @@ import { makeSocialCoachNode } from '../nodes/socialCoachNode';
 import { makeSessionPersister } from '../nodes/sessionPersister';
 import { safetyCheckNode } from '../nodes/safetyCheckNode';
 import { safetyGateNode } from '../nodes/safetyGateNode';
+import { makeFeedbackNode, type CoachMeasurementServices } from '../analytics/coachMeasurement';
 
 // ── Services interfaces (graph accepts abstractions, not concretions) ─────────
 
@@ -43,6 +44,7 @@ interface ITypingIndicator {
 }
 
 export interface GraphServices {
+  kpi?: CoachMeasurementServices;
   whitelist: IWhitelistService;
   session: ISessionManager;
   aiBots: IAIBotsClient;
@@ -60,6 +62,7 @@ const GraphAnnotation = Annotation.Root({
   userId:             Annotation<string>,
   conversationId:     Annotation<string>,
   sessionId:          Annotation<string>,
+  kpi:                Annotation<CareyBotState['kpi']>,
   isAuthorized:       Annotation<boolean>,
   age:                Annotation<number | null>,
   questionIndex:      Annotation<number>,
@@ -153,7 +156,7 @@ export function buildGraph(services: GraphServices) {
   const authGuard        = makeAuthGuard(services.whitelist);
   const emergencyHandler = makeEmergencyHandler(services.aiBots, services.typing);
   const freeTextNode     = makeFreeTextNode(services.aiBots, services.typing, services.menuMode);
-  const socialCoach      = makeSocialCoachNode(services.socialCoach, services.typing);
+  const socialCoach      = makeSocialCoachNode(services.socialCoach, services.typing, services.kpi);
   const resourceRedirect = makeResourceRedirectNode(services.aiBots, services.typing);
   const sessionPersist   = makeSessionPersister(services.session);
   const menuPresenter    = makeMenuPresenter(services.menuMode);
@@ -178,6 +181,7 @@ export function buildGraph(services: GraphServices) {
     .addNode('socialCoachNode',      socialCoach)
     .addNode('resourceRedirectNode', resourceRedirect)
     .addNode('sessionPersister',     sessionPersist)
+    .addNode('kpiFeedback', makeFeedbackNode(services.kpi ?? { claimFeedback: async () => null }))
 
     // ── Entry ──
     .addEdge(START, 'authGuard')
@@ -198,6 +202,7 @@ export function buildGraph(services: GraphServices) {
       resourceRedirectNode: 'resourceRedirectNode',
       socialCoachNode:      'socialCoachNode',
       sessionPersister:     'sessionPersister',
+      kpiFeedback:          'kpiFeedback',
       [END]: END,
     })
 
@@ -246,6 +251,8 @@ export function buildGraph(services: GraphServices) {
       emergencyHandler: 'emergencyHandler', sessionPersister: 'sessionPersister',
     })
     .addEdge('sessionPersister',     END);
+
+  graph.addEdge('kpiFeedback', 'sessionPersister');
 
   return graph.compile();
 }

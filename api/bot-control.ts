@@ -5,10 +5,18 @@ import { allowedCoachModel, COACH_MODELS, controlScope, MAINTENANCE_NOTICE,
   readBotMode, readCoachModel, setBotMode, setCoachModel } from '../src/lib/botControl';
 import { scenarioMenuEnabled } from '../src/lib/pivotFlags';
 import { coachProvider } from '../src/services/resolveCoachConfig';
+import kpiHandler from '../src/analytics/http';
 
-export const config = { runtime: 'nodejs', maxDuration: 15 };
+export const config = { runtime: 'nodejs', maxDuration: 60 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Reuse this existing function instead of adding a 13th API function (Hobby
+  // deployments are capped at 12). KPI admin actions authenticate independently;
+  // the only public path is a signed redirect to a fixed human-support target.
+  if (req.query.kpi === 'true' || typeof req.query.ref === 'string' ||
+      (typeof req.headers.authorization === 'string' && req.headers.authorization.startsWith('Bearer '))) {
+    return kpiHandler(req, res);
+  }
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const expected = process.env.BOT_CONTROL_TOKEN;

@@ -8,11 +8,18 @@
   ],
   "crons": [
     {
+      "path": "/api/bot-control",
+      "schedule": "55 15 * * *"
+    },
+    {
       "path": "/api/refresh-token",
       "schedule": "59 15 * * *"
     }
   ],
   "functions": {
+    "api/bot-control.ts": {
+      "maxDuration": 60
+    },
     "api/webhook.ts": {
       "maxDuration": 60
     },

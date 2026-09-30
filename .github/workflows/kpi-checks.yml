@@ -1,0 +1,42 @@
+name: KPI and safety checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      redis:
+        image: redis:7.2-alpine
+        ports:
+          - 16387:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # The tests refuse any other endpoint before clearing test-only data.
+      KPI_TEST_REDIS_URL: redis://127.0.0.1:16387/15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Same installation policy as the existing eval workflow: the historical
+      # lockfile needs npm install rather than npm ci under the runner's npm.
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm run typecheck:api
+      - run: npm run test:comments -- --silent
+      - run: npm run test:kpi -- --silent
+      - name: Bot-control and session isolation regressions
+        run: npx jest --runInBand --silent --testPathPattern='(botControl|botKillSwitch|controlRedis|sessionId|prefixedRedis)\.test\.ts$'
