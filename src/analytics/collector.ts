@@ -4,7 +4,7 @@ import type { CareyBotState } from '../types/state';
 import type { NormalizedMessage } from '../types/platform';
 import type { CoachMetadata } from '../services/resolveCoachConfig';
 import { KpiOutbox } from './outbox';
-import { makeEvent, userKey, signReferral, type KpiEvent, type KpiFact } from './contract';
+import { makeEvent, userKey, signReferral, eligibility, ageBand, type KpiEvent, type KpiFact } from './contract';
 import { INSIGHT_URL, CREST_URL } from '../config/questionnaire';
 
 const CONTACT = `-- kpi-contact-v1
@@ -44,7 +44,9 @@ export class KpiCollector {
     const contact = JSON.parse(raw) as typeof proposed;
     this.contactId = contact.sessionId;
     const base = makeEvent(this.msg, this.key, this.tester, null, 'activity', undefined, {
-      eligibility: age === null ? 'missing' : age >= 13 && age <= 30 ? 'eligible' : 'ineligible',
+      // Activity is recorded before loading the graph's session. Use the stored
+      // age here as well, including for returning adults and maintenance turns.
+      eligibility: eligibility(age), ageBand: ageBand(age),
       sessionId: contact.sessionId, sessionStartedAt: new Date(contact.startedAt).toISOString(), sessionStartObserved: contact.observed,
     });
     await this.outbox.record(base);

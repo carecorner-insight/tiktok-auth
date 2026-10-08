@@ -27,6 +27,20 @@ it('a missing-age greeting becomes eligible only when age is supplied in the sam
   const events = [event('activity', 'a', undefined, { eligibility: 'missing' }), event('turn_completed', 'a')];
   expect(computeMonthlyReport(events, '2026-09', asOf).K4_monthlyActiveUsers).toBe(1);
 });
+it('age bands retain other cohorts without expanding the default 13–30 report', () => {
+  const events = [
+    event('activity', 'youth', undefined, { ageBand: '18-25' }),
+    event('activity', 'younger', undefined, { ageBand: 'under-13', eligibility: 'ineligible' }),
+    event('activity', 'adult', undefined, { ageBand: '41-50', eligibility: 'ineligible' }),
+    event('activity', 'unknown', undefined, { ageBand: 'missing', eligibility: 'missing' }),
+  ];
+
+  const report = computeMonthlyReport(events, '2026-09', asOf);
+
+  expect(report.K4_monthlyActiveUsers).toBe(1);
+  expect(report.dataQuality.unknownAgeContacts).toBe(1);
+  expect(report.dataQuality.retainedEvents).toBe(4);
+});
 it('duplicate delivery IDs and repeated snapshots cannot inflate ratings', () => {
   const rating = event('response_recorded', 'a', undefined, { question: 'usefulness', response: 'yes' });
   const report = computeMonthlyReport([event('activity', 'a'), rating, rating, event('turn_completed', 'a', undefined, { usefulness: 'yes' })], '2026-09', asOf);
