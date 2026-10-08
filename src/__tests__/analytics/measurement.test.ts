@@ -1,5 +1,7 @@
 import { parseMeasurement, applyMeasurement, parseAnswer, makeFeedbackNode, KPI_PROMPT_CONTRACT } from '../../analytics/coachMeasurement';
-import { newKpiState, startScenario, userKey, makeEvent, eligibility, sgtDate } from '../../analytics/contract';
+import { newKpiState, startScenario, userKey, makeEvent, eligibility, ageBand, sgtDate } from '../../analytics/contract';
+import { KpiCollector } from '../../analytics/collector';
+import { KpiOutbox } from '../../analytics/outbox';
 import { makeState, makeNormalizedMessage } from '../mocks';
 import { buildGraph } from '../../graph/graph';
 import { EMERGENCY_MESSAGE } from '../../config/questionnaire';
@@ -62,6 +64,63 @@ it('records a legitimate no separately from missing', () => expect(parseAnswer('
 it('the numerical age cohort is 13–30 inclusive and unknown remains missing', () => {
   expect([null, 12, 13, 25, 30, 31].map(eligibility)).toEqual(['missing', 'ineligible', 'eligible', 'eligible', 'eligible', 'ineligible']);
 });
+it.each([
+  [5, 'under-13'], [12, 'under-13'], [13, '13-17'], [17, '13-17'],
+  [18, '18-25'], [25, '18-25'], [26, '26-30'], [30, '26-30'],
+  [31, '31-40'], [40, '31-40'], [41, '41-50'], [50, '41-50'],
+  [51, '51-plus'], [120, '51-plus'],
+] as const)('groups the reported age %s into %s', (age, expected) => {
+  expect(ageBand(age)).toBe(expected);
+});
+it.each([null, -1, 0, 4, 121, 20.5, NaN, Infinity])('does not guess an age band for unknown or invalid age %s', age => {
+  expect(ageBand(age)).toBe('missing');
+});
+it.each([
+  [null, 'missing', 'missing'], [12, 'under-13', 'ineligible'],
+  [20, '18-25', 'eligible'], [45, '41-50', 'ineligible'],
+] as const)('includes an age band in pre-session activity and session-start events: %s', async (age, band, cohort) => {
+  process.env.KPI_USER_KEY_SECRET = 'a'.repeat(64);
+  const redis = {
+    ...memoryRedis().client,
+    eval: jest.fn(async (_script: string, _keys: string[], args: string[]) => args[0]),
+  };
+  const collector = new KpiCollector(redis, makeNormalizedMessage());
+  const record = jest.spyOn(collector.outbox, 'record').mockResolvedValue(undefined);
+
+  await collector.activity(age);
+
+  expect(record).toHaveBeenCalledTimes(2);
+  for (const [event] of record.mock.calls) {
+    expect(event).toMatchObject({ ageBand: band, eligibility: cohort });
+    expect(event).not.toHaveProperty('age');
+  }
+});
+it('preserves the age band in the durable payload and outgoing receiver request', async () => {
+  const { client } = memoryRedis();
+  const event = makeEvent(makeNormalizedMessage(), 'synthetic-key', false, makeState({ age: 45 }), 'activity');
+  const atomic = jest.fn()
+    .mockResolvedValueOnce(1)
+    .mockResolvedValueOnce([event.eventId])
+    .mockResolvedValueOnce(1);
+  const outbox = new KpiOutbox(
+    { ...client, eval: atomic },
+    'https://prod.logic.azure.com/workflows/synthetic/triggers/manual/paths/invoke',
+  );
+  await outbox.record(event);
+  const storedPayload = atomic.mock.calls[0][2][0];
+  expect(JSON.parse(storedPayload)).toMatchObject({ ageBand: '41-50', eligibility: 'ineligible' });
+  await client.set('kpi:event:' + event.eventId, storedPayload);
+
+  const fetch = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+    JSON.stringify({ accepted: true, eventId: event.eventId }), { status: 200 },
+  ));
+  try {
+    expect(await outbox.flush()).toMatchObject({ delivered: 1, failed: 0 });
+    expect(fetch.mock.calls[0][1]?.body).toBe(storedPayload);
+  } finally {
+    fetch.mockRestore();
+  }
+});
 it('uses SGT dates at the UTC month boundary', () => expect(sgtDate(Date.parse('2026-09-30T16:00:00Z'))).toBe('2026-10-01'));
 it('event envelopes contain no direct ID, age, username or transcript', () => {
   const msg = makeNormalizedMessage({ messageId: '123', userId: '123456789', username: 'PRIVATE_NAME', text: 'PRIVATE_MESSAGE' });
@@ -70,6 +129,8 @@ it('event envelopes contain no direct ID, age, username or transcript', () => {
   const json = JSON.stringify(event);
   expect(json).not.toMatch(/123456789|PRIVATE_NAME|PRIVATE_MESSAGE|"age"/);
   expect(key).toHaveLength(64);
+  expect(event.ageBand).toBe('18-25');
+  expect(makeEvent(msg, key, false, null, 'activity').ageBand).toBe('missing');
   expect(makeEvent(msg, key, false, null, 'activity').eventId).toBe(event.eventId);
 });
 it('identity keys are domain-separated, stable and require a real secret', () => {
@@ -79,8 +140,12 @@ it('identity keys are domain-separated, stable and require a real secret', () =>
 it('the delivered event and Power Automate schema have exactly matching fields and choices', () => {
   const schema = JSON.parse(readFileSync(resolve(__dirname, '../../../docs/kpi-trigger.schema.json'), 'utf8'));
   const event = makeEvent(makeNormalizedMessage({ messageId: '100' }), userKey('123', 'a'.repeat(64)), true, makeState(), 'activity');
-  expect(Object.keys(event).sort()).toEqual([...schema.required].sort());
+  // New events always include ageBand. The receiver accepts its absence only
+  // for historical records or queued retries from before this additive change.
+  expect(schema.required).toEqual(expect.not.arrayContaining(['ageBand']));
+  expect(Object.keys(event).filter(key => key !== 'ageBand').sort()).toEqual([...schema.required].sort());
   expect(Object.keys(event).sort()).toEqual(Object.keys(schema.properties).sort());
+  expect(schema.properties.ageBand.enum).toEqual(['under-13', '13-17', '18-25', '26-30', '31-40', '41-50', '51-plus', 'missing']);
   for (const [key, value] of Object.entries(event)) {
     const property = schema.properties[key];
     if (property.enum) expect(property.enum).toContain(value);
@@ -100,6 +165,17 @@ it('a skipped readiness answer does not stack a new survey', async () => {
   const scheduler = { claimFeedback: jest.fn(async () => 'usefulness' as const) };
   const result = await makeFeedbackNode(scheduler)(makeState({ age: 20, kpi: { ...newKpiState(1), pendingQuestion: 'readiness' }, messages: [{ role: 'user', content: 'skip', timestamp: 2 }] }));
   expect(result.kpi!.readiness).toBe('missing');
+  expect(scheduler.claimFeedback).not.toHaveBeenCalled();
+});
+it.each([null, 12, 31, 45])('adding an age band does not extend follow-up feedback beyond the existing cohort: %s', async age => {
+  const scheduler = { claimFeedback: jest.fn(async () => 'usefulness' as const) };
+  const result = await makeFeedbackNode(scheduler)(makeState({
+    age, kpi: { ...newKpiState(1), pendingQuestion: 'readiness' },
+    messages: [{ role: 'user', content: '2', timestamp: 2 }],
+  }));
+
+  expect(result.kpi!.readiness).toBe('2');
+  expect(result.kpi!.pendingQuestion).toBeNull();
   expect(scheduler.claimFeedback).not.toHaveBeenCalled();
 });
 it('clarity uses identical before/after anchors and a paired instrument ID', async () => {

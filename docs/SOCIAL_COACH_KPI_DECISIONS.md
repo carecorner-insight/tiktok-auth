@@ -26,6 +26,7 @@ target; it is not evidence that a flow, column, survey or report is deployed.
 16. Distress tiers are explicitly labelled AI estimates, with a versioned rubric and staff sample checks before dependable funder reporting. They do not change safety-routing rules.
 17. Initial pilot feedback policy: at most one optional feedback offer per user per seven days; clarity replaces usefulness in 20% of those offers. Report the actual sample and response counts.
 18. Superseded on 30 September: the user authorized completing implementation, self-testing and enabling live collection without further batch review. Salesforce conversion remains deferred.
+19. Added on 2 October 2026: include `ageBand` on new KPI events, using `under-13`, `13-17`, `18-25`, `26-30`, `31-40`, `41-50`, `51-plus` and `missing`. Derive it from the existing self-reported age at event collection time; do not export exact ages or infer age from message text. Retain activity outside the 13–30 cohort for separate filtering, while keeping the built-in report cohort and feedback-question rules unchanged. Historical records without the field remain unknown; the receiver accepts older retries with `missing` rather than guessing a band.
 
 ## Accepted risks
 

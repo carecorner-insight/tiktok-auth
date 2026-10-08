@@ -10,6 +10,8 @@ export const TIER_RUBRIC_VERSION = 'ai-estimate-v1-unvalidated';
 export type Score = '1' | '2' | '3' | 'missing';
 export type YesNo = 'yes' | 'no' | 'missing';
 export type Tier = '1' | '2' | '3' | '4' | 'missing';
+export type AgeBand = 'under-13' | '13-17' | '18-25' | '26-30' |
+  '31-40' | '41-50' | '51-plus' | 'missing';
 export type Question = 'readiness' | 'usefulness' | 'clarityBefore' | 'clarityAfter';
 export type EventType = 'activity' | 'session_started' | 'scenario_started' |
   'checkin_reached' | 'response_recorded' | 'feedback_offered' | 'script_selected' |
@@ -61,6 +63,7 @@ export interface KpiEvent {
   userKey: string;
   isTester: boolean;
   eligibility: 'eligible' | 'ineligible' | 'missing';
+  ageBand: AgeBand;
   sessionId: string | null;
   sessionStartedAt: string | null;
   sessionStartObserved: boolean;
@@ -129,6 +132,22 @@ export function eligibility(age: number | null): KpiEvent['eligibility'] {
   return age >= 13 && age <= 30 ? 'eligible' : 'ineligible';
 }
 
+/** Group the existing self-reported age, never infer it from conversation text.
+ * Match the age question's accepted range; exact ages stay out of KPI records.
+ * The band is observed at collection time, not automatically aged each birthday. */
+export function ageBand(age: number | null): AgeBand {
+  if (age === null || !Number.isInteger(age) || age < 5 || age > 120) {
+    return 'missing';
+  }
+  if (age < 13) return 'under-13';
+  if (age <= 17) return '13-17';
+  if (age <= 25) return '18-25';
+  if (age <= 30) return '26-30';
+  if (age <= 40) return '31-40';
+  if (age <= 50) return '41-50';
+  return '51-plus';
+}
+
 /** A keyed hash prevents enumerating Telegram's small numeric identifier space. */
 export function userKey(userId: string, secret: string): string {
   if (secret.length < 32) throw new Error('KPI identity secret must have at least 32 characters');
@@ -149,13 +168,14 @@ export function makeEvent(
   kind: EventType, metadata?: CoachMetadata, extras: Partial<KpiEvent> = {},
 ): KpiEvent {
   const kpi = state?.kpi;
+  const age = state?.age ?? null;
   const now = Date.now();
   const timestamp = Number.isFinite(msg.timestamp) ? msg.timestamp : now;
   return {
     schemaVersion: 1, eventId: eventId(msg.messageId ?? randomUUID(), key, kind), eventType: kind,
     occurredAt: new Date(timestamp).toISOString(), sourceMessageId: msg.messageId ?? null, receivedAt: new Date(now).toISOString(),
     monthSGT: sgtDate(timestamp).slice(0, 7), dateSGT: sgtDate(timestamp), userKey: key,
-    isTester: tester, eligibility: eligibility(state?.age ?? null), sessionId: state?.sessionId ?? null,
+    isTester: tester, eligibility: eligibility(age), ageBand: ageBand(age), sessionId: state?.sessionId ?? null,
     sessionStartedAt: kpi ? new Date(kpi.sessionStartedAt).toISOString() : null,
     sessionStartObserved: kpi?.sessionStartObserved ?? false,
     scenarioRunId: kpi?.scenarioRunId ?? null,

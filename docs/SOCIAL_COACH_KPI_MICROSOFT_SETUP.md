@@ -22,6 +22,7 @@ names match. Do not create a new public sharing link or widen existing access.
 | sessionId, scenarioRunId, feedbackId, referralId | Four Single line of text columns; optional |
 | scenarioTag | Choice: `1`, `2`, `3`, `4`, `5`, `6`; optional (this is the scenario, NOT risk) |
 | eligibility | Choice: `eligible`, `ineligible`, `missing` |
+| ageBand | Choice: `under-13`, `13-17`, `18-25`, `26-30`, `31-40`, `41-50`, `51-plus`, `missing`; default `missing` |
 | mode | Choice: `prepare`, `reflect`, `missing` |
 | question | Choice: `readiness`, `usefulness`, `clarityBefore`, `clarityAfter`, `missing` |
 | response | Choice: `1`, `2`, `3`, `yes`, `no`, `missing` |
@@ -40,6 +41,14 @@ responses: they cannot represent `missing`. Empty IDs are allowed and are not ra
 The complete JSON retains session/scenario start times, version stamps and model
 provenance without needing dozens of extra list columns. Never put eventJson or
 existing aiResponse/userMessage in 255-character Single line of text columns.
+
+There are 30 new columns plus the existing Title column (31 total). `ageBand`
+is derived from the existing self-reported age, not inferred by the AI. All
+supported ages can generate records; 13–30 remains the default reporting cohort.
+The bands mean below 13, 13–17, 18–25, 26–30, 31–40, 41–50 and 51 or older.
+Unknown or invalid ages use `missing`. The age question currently accepts 5–120.
+The band reflects the age known when that event was recorded, not a calculated
+current age; birthdays are not automatically tracked.
 
 ## 2. Create the dedicated Power Automate receiver
 
@@ -62,6 +71,9 @@ existing aiResponse/userMessage in 255-character Single line of text columns.
    field, Title from eventType, and eventJson from expression `string(triggerBody())`.
    For optional ID/selection columns, leave them empty when the input is null;
    do not replace them with a fake `missing` ID. Keep real booleans for Yes/No.
+   Map ageBand using `coalesce(triggerBody()?['ageBand'], 'missing')`. New
+   events always include it; it is optional in the trigger schema so queued
+   records from before this addition can still be stored.
 6. If no, do not create another row: the stable eventId already exists.
 7. **Response**, outside the condition and configured to run only after the
    condition succeeds: status `200`, Content-Type `application/json`, body:
@@ -82,6 +94,24 @@ Do not acknowledge from a parallel branch before storage finishes.
 There are multiple event rows per conversation. Filter `eventType` for calculations;
 do not count repeated snapshot ratings in turn_completed as new responses.
 This flow must NOT send Teams alerts; those stay in the existing safety flow.
+
+### Adding ageBand to an existing receiver
+
+1. Add the `ageBand` single-select Choice column with the values above, default
+   `missing`, and fill-in choices OFF. No other List column changes are needed.
+2. Replace the trigger schema with the updated `kpi-trigger.schema.json` and
+   update Create item with the coalesce expression above. Keep `ageBand` out of
+   the schema's required array until older senders and retries are retired.
+3. Deploy the age-band sender only after the List and flow accept the new field.
+   Preserve existing event IDs, deduplication and storage acknowledgements.
+4. Test one current event with `ageBand: "41-50"` and one legacy event without
+   ageBand: the saved rows should contain `41-50` and `missing`, respectively.
+   Use synthetic data in a test destination; do not generate staff alerts.
+
+Historical rows without ageBand remain unknown; treat blanks as `missing` in
+filters or reports. Do not guess a band from `ineligible` (which combines
+younger users and older adults), or reconstruct past ages from today's stored age.
+Exact ages and transcript content remain absent from KPI events.
 
 ## 3. Production settings and sender verification
 
@@ -153,6 +183,10 @@ KPI receiver is still separate from transcript logging and Teams alerts.
   fabricated as freshly observed starts during rollout.
 - Eligibility 13–30 inclusive; age remains non-gating. A same-month age answer
   establishes that month's cohort, not earlier unknown-age months.
+- `ageBand` supports separate age-group filtering in the List/export without
+  changing the built-in 13–30 KPI report. Adult outcome research still needs a
+  separately reviewed report cohort and feedback policy; adding this field does
+  not extend usefulness/clarity questions beyond the current 13–30 cohort.
 - Completion is a **delivered readiness check-in**, whether answered or missing.
   It belongs to scenario start month, including late completions.
 - Optional feedback: at most one offer per user per seven days; 20% clarity

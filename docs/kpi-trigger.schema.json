@@ -14,6 +14,7 @@
     "userKey": { "type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[a-f0-9]{64}$" },
     "isTester": { "type": "boolean" },
     "eligibility": { "type": "string", "enum": ["eligible", "ineligible", "missing"] },
+    "ageBand": { "type": "string", "enum": ["under-13", "13-17", "18-25", "26-30", "31-40", "41-50", "51-plus", "missing"], "description": "Band derived from the existing self-reported age at collection time. Optional only for older records and queued retries; map absence to missing." },
     "sessionId": { "type": ["string", "null"] },
     "sessionStartedAt": { "type": ["string", "null"] },
     "sessionStartObserved": { "type": "boolean" },
