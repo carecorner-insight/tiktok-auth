@@ -1,8 +1,9 @@
 import type { CareyBotState } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { EMERGENCY_MESSAGE } from '../config/questionnaire';
-import { parseCrisisReply } from '../lib/crisisDetection';
+import { containsCrisisPhrase, parseCrisisReply } from '../lib/crisisDetection';
 import { staticFirstCrisis } from '../lib/pivotFlags';
+import { getLastUserInput } from '../types/nodes';
 
 interface IAIBotsClient {
   chat(chatId: string | null, text: string, primeMessage?: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<{ reply: string; chatId: string }>;
@@ -14,6 +15,12 @@ interface ITypingIndicator {
 
 export function makeEmergencyHandler(aiBotsClient: IAIBotsClient, typing: ITypingIndicator) {
   return async function emergencyHandler(state: CareyBotState): Promise<NodeResult> {
+    // The router's phrase backstop routes here directly, without setting a
+    // source; every other detector has already recorded itself. The screener
+    // paths (study build) leave this null.
+    const crisisSource = state.crisisSource
+      ?? (containsCrisisPhrase(getLastUserInput(state)) ? 'phrase' : null);
+
     // ── F3: static-first crisis ──────────────────────────────────────────────
     // The FIRST crisis turn uses the configured static wording, produced
     // with no generative model at all. This is the pivot's answer to the
@@ -26,6 +33,7 @@ export function makeEmergencyHandler(aiBotsClient: IAIBotsClient, typing: ITypin
         pendingResponse: EMERGENCY_MESSAGE,
         conversationPhase: 'crisis',
         crisisDetected: true,
+        crisisSource,
         // The prior ID may belong to a different bot/provider. A follow-up
         // creates the crisis session using the retained transcript.
         aiBotChatId: null,
@@ -63,6 +71,7 @@ export function makeEmergencyHandler(aiBotsClient: IAIBotsClient, typing: ITypin
         pendingResponse: reply,
         conversationPhase: 'crisis',
         crisisDetected: true,
+        crisisSource,
       };
     } catch (err) {
       // AIBots unavailable / rate-limited — GUARANTEE the hotline reaches the user.
@@ -71,6 +80,7 @@ export function makeEmergencyHandler(aiBotsClient: IAIBotsClient, typing: ITypin
         pendingResponse: EMERGENCY_MESSAGE,
         conversationPhase: 'crisis',
         crisisDetected: true,
+        crisisSource,
       };
     } finally {
       clearInterval(typingInterval);

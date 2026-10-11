@@ -18,6 +18,14 @@ export type ConversationPhase =
  */
 export type MenuOption = 1 | 2 | 3 | 4 | 5 | 6;
 
+/**
+ * Which detector first raised crisisDetected in this session:
+ *   phrase     — deterministic backstop (lib/crisisDetection), no LLM
+ *   classifier — intent classifier LLM labelled CRISIS
+ *   coach      — a coach/companion reply carried the [CRISIS] tag
+ */
+export type CrisisSource = 'phrase' | 'classifier' | 'coach';
+
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -60,6 +68,10 @@ export interface CareyBotState {
 
   // Set true when crisis detected mid free-text (Option 1)
   crisisDetected: boolean;
+
+  // First detector that raised crisisDetected this session; null when none.
+  // Optional so sessions saved before this field load unchanged.
+  crisisSource?: CrisisSource | null;
 
   // Social-coach handoff (set when Carey's reply carries a [SOCIAL] tag and we
   // offer the coach; the router treats the next "yes" as a switch to option 2).
@@ -109,6 +121,7 @@ export const initialState = (
   messages: [],
   pendingResponse: null,
   crisisDetected: false,
+  crisisSource: null,
   pendingHandoff: null,
   socialCoachOffered: false,
   referralRequested: false,

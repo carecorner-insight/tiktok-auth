@@ -75,7 +75,7 @@ export function makeFreeTextNode(
         justSwitchedLane: false,
         menuSelection: false,
         ...(offerCoach && { socialCoachOffered: true }),
-        ...(isCrisis && { crisisDetected: true }),
+        ...(isCrisis && { crisisDetected: true, crisisSource: state.crisisSource ?? 'coach' }),
       };
     } finally {
       clearInterval(typingInterval);

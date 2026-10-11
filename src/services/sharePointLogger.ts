@@ -37,6 +37,9 @@ export class SharePointLogger {
       // infer this from conversationPhase — with the screener disabled, `tag`
       // is never set, so this is the only reliable crisis signal.
       crisisDetected: state.crisisDetected === true,
+      // Which detector first raised the flag (phrase | classifier | coach), so
+      // staff can see why a conversation was flagged. null when none.
+      crisisSource: state.crisisSource ?? null,
       conversationPhase: state.conversationPhase,
       questionIndex: state.questionIndex,
       answers: state.answers,

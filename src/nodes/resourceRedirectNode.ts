@@ -112,7 +112,7 @@ export function makeResourceRedirectNode(aiBotsClient: IAIBotsClient, typing: IT
         conversationPhase: 'option',
         selectedOption: 3,
         justSwitchedLane: false,
-        ...(isCrisis && { crisisDetected: true }),
+        ...(isCrisis && { crisisDetected: true, crisisSource: state.crisisSource ?? 'coach' }),
       };
     } finally {
       clearInterval(typingInterval);

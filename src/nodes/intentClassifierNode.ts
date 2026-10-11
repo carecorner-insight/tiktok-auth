@@ -1,4 +1,4 @@
-import type { CareyBotState, MenuOption } from '../types/state';
+import type { CareyBotState, CrisisSource, MenuOption } from '../types/state';
 import type { NodeResult } from '../types/nodes';
 import { getLastUserInput } from '../types/nodes';
 import { MENU_TEXT, SCENARIO_MENU_REPEAT_TEXT } from '../config/questionnaire';
@@ -37,16 +37,24 @@ export const INTENT_CLASSIFIER_PROMPT =
   `(and any prior conversation context provided), classify what the user needs ` +
   `RIGHT NOW.\n\n` +
   `Labels:\n` +
-  `CRISIS - any mention of suicide, self-harm, wanting to die, disappear or not ` +
-  `wake up, feeling unsafe, or intent to hurt themselves or someone else. ` +
-  `When in doubt between CRISIS and any other label, choose CRISIS.\n` +
+  `CRISIS - the latest message or the recent conversation mentions or clearly ` +
+  `implies suicide, self-harm, wanting to die, disappear or not wake up, ` +
+  `feeling unsafe, or intent to hurt themselves or someone else. Slang or ` +
+  `shorthand that clearly means this (for example "kms" or "unalive") counts. ` +
+  `If the latest message is ambiguous but the recent conversation contains a ` +
+  `risk signal, choose CRISIS. ` +
+  `Do not choose CRISIS for a short, ambiguous or unrelated message (a typo, an ` +
+  `abbreviation such as "brb", "bfr" or "idk", a greeting, a joke, or ordinary ` +
+  `stress) when nothing in it or the recent conversation points to risk; choose ` +
+  `the best-fitting other label, or UNCLEAR.\n` +
   `SOCIAL - wants help with, or to practise or prepare for, a social situation: ` +
   `conflict with friends or family, being left out, speaking up, confessing, ` +
   `apologising, presentations, interviews, meeting new people.\n` +
   `HUMAN - asks to speak with a real person, counsellor, therapist, or staff.\n` +
   `TALK - wants to talk through feelings, stress, school, or anything on their ` +
   `mind that is not primarily a social-situation rehearsal.\n` +
-  `UNCLEAR - a bare greeting, gibberish, spam, or you genuinely cannot tell.\n\n` +
+  `UNCLEAR - a bare greeting, gibberish, spam, an unexplained abbreviation, or ` +
+  `you genuinely cannot tell.\n\n` +
   `Reply with exactly ONE word: CRISIS, SOCIAL, HUMAN, TALK, or UNCLEAR. ` +
   `No punctuation, no explanation.`;
 
@@ -128,8 +136,10 @@ export function makeIntentClassifierNode(intentLLM: IIntentLLM, mode: MenuMode =
 
     const stay = (): NodeResult => goToLane(current as MenuOption);
 
-    const toCrisis = (): NodeResult => ({
+    // Keep the FIRST detector that raised the flag this session.
+    const toCrisis = (source: CrisisSource): NodeResult => ({
       crisisDetected: true,
+      crisisSource: state.crisisSource ?? source,
       // Only the emergency handler enters the crisis phase after sending safety copy.
       conversationPhase: state.conversationPhase,
       selectedOption: null,
@@ -153,7 +163,7 @@ export function makeIntentClassifierNode(intentLLM: IIntentLLM, mode: MenuMode =
     // 2 ── Local crisis pre-check — runs in ALL modes/situations. Never the LLM.
     if (containsCrisisPhrase(normalized)) {
       console.log('[intent] local crisis phrase matched → crisis');
-      return toCrisis();
+      return toCrisis('phrase');
     }
 
     // 3 ── NUMBERED mode: no LLM classification. (In numbered mode the router
@@ -189,7 +199,7 @@ export function makeIntentClassifierNode(intentLLM: IIntentLLM, mode: MenuMode =
       console.error('[intent] classifier LLM failed', err);
     }
 
-    if (intent === 'CRISIS') return toCrisis();
+    if (intent === 'CRISIS') return toCrisis('classifier');
 
     // Service intent is not a scenario ID. HUMAN is a separate graph outcome.
     if (scenarios) {

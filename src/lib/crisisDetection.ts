@@ -36,7 +36,14 @@ const CRISIS_PHRASES = [
   'unalive',
 ];
 
+// Unambiguous shorthand, matched as WHOLE words only: "kms" (kill myself) must
+// not fire on "kmsl" (a laughing reaction) or inside another word. Substring
+// matching is fine for the multi-word phrases above but not for 3-letter tokens.
+const CRISIS_SHORTHAND = ['kms'];
+
 /** True when the pre-normalised user input contains a known crisis phrase. */
 export function containsCrisisPhrase(normalizedInput: string): boolean {
-  return CRISIS_PHRASES.some(p => normalizedInput.includes(p));
+  if (CRISIS_PHRASES.some(p => normalizedInput.includes(p))) return true;
+  const words = normalizedInput.split(/\s+/);
+  return CRISIS_SHORTHAND.some(s => words.includes(s));
 }
