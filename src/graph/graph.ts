@@ -1,6 +1,6 @@
 import { StateGraph, Annotation, END, START } from '@langchain/langgraph';
 import type { CareyBotState, Platform, ConversationPhase, MenuOption, Message } from '../types/state';
-import type { tag } from '../types/state';
+import type { tag, CrisisSource } from '../types/state';
 import { TOTAL_QUESTIONS } from '../config/questionnaire';
 
 import { makeRouter } from '../nodes/router';
@@ -74,6 +74,7 @@ const GraphAnnotation = Annotation.Root({
   messages:           Annotation<Message[]>({ reducer: (_, next) => next, default: () => [] }),
   pendingResponse:    Annotation<string | null>,
   crisisDetected:     Annotation<boolean>,
+  crisisSource:       Annotation<CrisisSource | null>,
   pendingHandoff:     Annotation<'socialCoach' | null>,
   socialCoachOffered: Annotation<boolean>,
   referralRequested:  Annotation<boolean>,

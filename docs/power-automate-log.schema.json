@@ -11,6 +11,7 @@
     "sessionId": { "type": "string" },
     "tag": { "type": ["string", "null"] },
     "crisisDetected": { "type": "boolean" },
+    "crisisSource": { "type": ["string", "null"], "enum": ["phrase", "classifier", "coach", null] },
     "conversationPhase": { "type": "string" },
     "questionIndex": { "type": "number" },
     "answers": { "type": "array", "items": { "type": "string" } },

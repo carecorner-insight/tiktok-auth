@@ -114,7 +114,7 @@ export function makeSocialCoachNode(aiBotsClient: IAIBotsClient, typing: ITyping
         // Crisis always takes precedence.
         referralRequested: !isCrisis && suggestsReferral,
         conversationPhase: 'option',
-        ...(isCrisis && { crisisDetected: true }),
+        ...(isCrisis && { crisisDetected: true, crisisSource: state.crisisSource ?? 'coach' }),
       };
     } finally {
       clearInterval(typingInterval);
