@@ -74,4 +74,34 @@ describe('SharePointLogger', () => {
     const svc = makeService();
     await expect(svc.log(makeState(), 'msg', 'reply')).resolves.not.toThrow();
   });
+
+  it('stops a hanging log request after eight seconds without exposing its signed URL', async () => {
+    jest.useFakeTimers();
+    // Put the standard timeout signal on Jest's clock so no real network or
+    // eight-second wall-clock delay is needed to exercise the abort path.
+    const timeout = jest.spyOn(AbortSignal, 'timeout').mockImplementation(milliseconds => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), milliseconds);
+      return controller.signal;
+    });
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockFetch.mockImplementation((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal!.addEventListener('abort', () => reject(new Error('https://synthetic.invalid/?sig=private-test-value')));
+    }));
+    try {
+      let finished = false;
+      const request = makeService().log(makeState(), 'msg', 'reply').then(() => { finished = true; });
+      await jest.advanceTimersByTimeAsync(7900);
+      expect(finished).toBe(false);
+      await jest.advanceTimersByTimeAsync(100);
+      await request;
+      expect(finished).toBe(true);
+      expect(errorLog).toHaveBeenCalledWith('[conversation-log] delivery failed or timed out');
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain('private-test-value');
+    } finally {
+      timeout.mockRestore();
+      errorLog.mockRestore();
+      jest.useRealTimers();
+    }
+  });
 });

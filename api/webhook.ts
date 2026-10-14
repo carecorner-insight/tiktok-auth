@@ -22,7 +22,7 @@ import { pushUatLog, providerFromChatId } from '../src/lib/uatLog';
 import { getMenuMode, type MenuMode } from '../src/lib/menuMode';
 import { getStoredAge, setStoredAge } from '../src/lib/ageStore';
 import { coachProvider, resolveCoachConfig } from '../src/services/resolveCoachConfig';
-import { timingSafeEqual } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import { KpiCollector, collectionEnabled } from '../src/analytics/collector';
 import { initialState, type CareyBotState } from '../src/types/state';
 import { newKpiState } from '../src/analytics/contract';
@@ -79,26 +79,39 @@ async function fetchWhitelistStatus(
 
 // ── Per-user processing lock (prevents race conditions on fast replies) ───────
 
+const USER_LOCK_WAIT_MS = 10_000;
+const USER_LOCK_RETRY_MS = 500;
+// Outlive the webhook's 60-second execution limit, including a slow AI call.
+const USER_LOCK_TTL_SECONDS = 90;
+const RELEASE_USER_LOCK = `-- user-lock-release-v1
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0`;
+const BUSY_REPLY = "I'm still finishing your previous message. Please send this message again in a moment.";
+
 async function withUserLock<T>(
   redis: RedisClient,
   platform: string,
   userId: string,
   fn: () => Promise<T>,
 ): Promise<T | undefined> {
+  if (!redis.eval) throw new Error('Atomic conversation locking is unavailable');
   const lockKey = `lock:${platform}:${userId}`;
-  const acquired = await redis.set(lockKey, '1', { ex: 30, nx: true });
-
-  if (acquired === null) {
-    // Lock held — wait 2 s and retry once
-    await new Promise(r => setTimeout(r, 2000));
-    const retry = await redis.set(lockKey, '1', { ex: 30, nx: true });
-    if (retry === null) return undefined; // still locked, drop
+  const owner = randomUUID();
+  const deadline = Date.now() + USER_LOCK_WAIT_MS;
+  while (await redis.set(lockKey, owner, { ex: USER_LOCK_TTL_SECONDS, nx: true }) === null) {
+    // Give an in-flight reply time to finish, without using the whole function
+    // budget. The caller explicitly asks for a retry if this wait expires.
+    if (Date.now() >= deadline) return undefined;
+    await new Promise(resolve => setTimeout(resolve, USER_LOCK_RETRY_MS));
   }
 
   try {
     return await fn();
   } finally {
-    await redis.del(lockKey);
+    // A late completion must never remove a newer request's lock.
+    await redis.eval(RELEASE_USER_LOCK, [lockKey], [owner]);
   }
 }
 
@@ -132,9 +145,10 @@ export async function handleMessage(
   }
 
   // Idempotency dedup on platform message ID
-  if (msg.messageId) {
+  const dedupKey = msg.messageId ? `dedup:${msg.platform}:${msg.messageId}` : null;
+  if (dedupKey) {
     const tDedup = Date.now();
-    const isNew = await redis.set(`dedup:${msg.platform}:${msg.messageId}`, 1, {
+    const isNew = await redis.set(dedupKey, 1, {
       ex: 3600,
       nx: true,
     });
@@ -196,6 +210,7 @@ export async function handleMessage(
 
   const tLock = Date.now();
   let enteredLock = false;
+  let finishLogging: (() => Promise<void>) | undefined;
   try {
     await withUserLock(redis, msg.platform, msg.userId, async () => {
       enteredLock = true;
@@ -272,31 +287,31 @@ export async function handleMessage(
           ...fallbackState, ...(fallbackState.kpi ? { kpi: { ...fallbackState.kpi, facts: [] } } : {}),
         };
         await recordOutcome('failed');
-        if (logger && fallbackState) {
-          // Await: fire-and-forget would be dropped when the serverless function
-          // freezes before the HTTP POST completes. logger.log never throws.
-          await logger.log(fallbackState, msg.text, responseText, msg.username);
-        }
-        if (uatEnabled) {
-          try {
-            await pushUatLog(redis, {
-              platform: msg.platform,
-              userId: msg.userId,
-              authorized: fallbackState?.isAuthorized ?? false,
-              userMessage: msg.text,
-              botReply: responseText,
-              phase: fallbackState?.conversationPhase ?? 'unknown',
-              tag: fallbackState?.tag ?? null,
-              crisis: fallbackState?.crisisDetected ?? false,
-              provider: providerFromChatId(fallbackState?.aiBotChatId),
-              latencyMs: Date.now() - tTotal,
-              error: true,
-              coach: coachConfig.metadata,
-            });
-          } catch (e) {
-            console.error('[uat] log push failed:', e);
+        finishLogging = async () => {
+          if (logger && fallbackState) {
+            await logger.log(fallbackState, msg.text, responseText, msg.username);
           }
-        }
+          if (uatEnabled) {
+            try {
+              await pushUatLog(redis, {
+                platform: msg.platform,
+                userId: msg.userId,
+                authorized: fallbackState?.isAuthorized ?? false,
+                userMessage: msg.text,
+                botReply: responseText,
+                phase: fallbackState?.conversationPhase ?? 'unknown',
+                tag: fallbackState?.tag ?? null,
+                crisis: fallbackState?.crisisDetected ?? false,
+                provider: providerFromChatId(fallbackState?.aiBotChatId),
+                latencyMs: Date.now() - tTotal,
+                error: true,
+                coach: coachConfig.metadata,
+              });
+            } catch (e) {
+              console.error('[uat] log push failed:', e);
+            }
+          }
+        };
         return;
       }
 
@@ -329,55 +344,59 @@ export async function handleMessage(
         if (!await reply(msg.userId)) return;
       }
 
-      // Await: the user already has their reply (sendMessage above), so this adds
-      // no perceived latency, and awaiting prevents the log POST being dropped
-      // when the serverless function freezes. logger.log never throws.
-      if (logger) await logger.log(result.state, msg.text, result.response, msg.username);
+      // The saved state and delivered reply belong to this turn. Log that
+      // snapshot after unlocking so the participant can answer immediately.
+      finishLogging = async () => {
+        if (logger) await logger.log(result.state, msg.text, result.response, msg.username);
 
-      if (uatEnabled) {
-        try {
-          await pushUatLog(redis, {
-            platform: msg.platform,
-            userId: msg.userId,
-            authorized: result.state.isAuthorized,
-            userMessage: msg.text,
-            botReply: result.response,
-            phase: result.state.conversationPhase,
-            tag: result.state.tag ?? null,
-            crisis: result.state.crisisDetected,
-            provider: providerFromChatId(result.state.aiBotChatId),
-            latencyMs: Date.now() - tTotal,
-            error: false,
-            coach: coachConfig.metadata,
-          });
-        } catch (e) {
-          console.error('[uat] log push failed:', e);
-        }
-      }
-
-      // Demographic capture — log the user's actual age once, deduped in Redis.
-      // The NX key persists ~1 year so a returning user isn't re-logged.
-      const demoUrl = process.env.DEMOGRAPHICS_WEBHOOK_URL;
-      if (demoUrl && result.state.age != null) {
-        try {
-          const demoKey = `demographic:${msg.platform}:${msg.userId}`;
-          const firstTime = await redis.set(demoKey, '1', { ex: 365 * 24 * 3600, nx: true });
-          if (firstTime !== null) {
-            await new DemographicsLogger(demoUrl).log(msg.platform, msg.userId, result.state.age);
+        if (uatEnabled) {
+          try {
+            await pushUatLog(redis, {
+              platform: msg.platform,
+              userId: msg.userId,
+              authorized: result.state.isAuthorized,
+              userMessage: msg.text,
+              botReply: result.response,
+              phase: result.state.conversationPhase,
+              tag: result.state.tag ?? null,
+              crisis: result.state.crisisDetected,
+              provider: providerFromChatId(result.state.aiBotChatId),
+              latencyMs: Date.now() - tTotal,
+              error: false,
+              coach: coachConfig.metadata,
+            });
+          } catch (e) {
+            console.error('[uat] log push failed:', e);
           }
-        } catch (e) {
-          console.error('[demographics] dedup/log error:', e);
         }
-      }
 
-      console.log(`[perf] handleMessage total: ${Date.now() - tTotal}ms`);
+        // Atomic dedup still permits only one demographic export per user,
+        // even when the next conversation turn has already begun.
+        const demoUrl = process.env.DEMOGRAPHICS_WEBHOOK_URL;
+        if (demoUrl && result.state.age != null) {
+          try {
+            const demoKey = `demographic:${msg.platform}:${msg.userId}`;
+            const firstTime = await redis.set(demoKey, '1', { ex: 365 * 24 * 3600, nx: true });
+            if (firstTime !== null) {
+              await new DemographicsLogger(demoUrl).log(msg.platform, msg.userId, result.state.age);
+            }
+          } catch (e) {
+            console.error('[demographics] dedup/log error:', e);
+          }
+        }
+      };
     });
-    if (!enteredLock) await recordOutcome('failed');
+    if (!enteredLock) {
+      // Nothing was processed: don't permanently mark the update as handled.
+      // Telegram was already acknowledged, so tell the participant to retry.
+      if (dedupKey) await redis.del(dedupKey);
+      if (await reply(BUSY_REPLY)) await recordOutcome('failed');
+    }
   } finally {
-    // External KPI delivery runs AFTER the user lock is released. A slow
-    // Microsoft flow must not make a quick participant reply get dropped, or
-    // delay the existing transcript/Teams-alert request behind analytics retries.
-    await flushKpi();
+    // Keep both deliveries inside waitUntil, but outside the conversation lock.
+    // Run independently so a slow transcript flow cannot delay KPI retries.
+    await Promise.all([finishLogging?.(), flushKpi()]);
+    console.log(`[perf] handleMessage total: ${Date.now() - tTotal}ms`);
   }
 }
 

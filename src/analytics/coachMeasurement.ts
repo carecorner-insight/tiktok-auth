@@ -78,11 +78,14 @@ export function applyMeasurement(kpi: CoachKpiState, measurement: Measurement | 
 
 /** Only an answer to an outstanding question is a score. "2" elsewhere is not. */
 export function parseAnswer(question: Question, raw: string): Score | YesNo | null {
-  const text = raw.trim().toLowerCase();
+  const text = raw.trim().toLowerCase().replace(/[.!]+$/, '').trim();
   if (/^(skip|missing|prefer not to say)$/.test(text)) return 'missing';
   if (question === 'usefulness') {
-    if (/^(yes|y)$/.test(text)) return 'yes';
-    if (/^(no|n)$/.test(text)) return 'no';
+    // Match complete short answers only. A longer message may contain a new
+    // coaching request or a safety signal and must keep its normal routing.
+    if (/^(yes|y|yeah|yea|yep|yup|yah|ya)$/.test(text)) return 'yes';
+    if (/^(no|n|nope|nah)$/.test(text)) return 'no';
+    if (/^(maybe|not sure|unsure|i don't know|i dont know|idk)$/.test(text)) return 'missing';
     return null;
   }
   const match = text.match(/^([123])\.?$/);

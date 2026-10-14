@@ -68,4 +68,12 @@ describe('withKeyPrefix', () => {
 
     expect(calls[1]).toEqual(['set', 'study:k', 'v', { ex: 5 }]);
   });
+
+  it('namespaces every atomic-operation key while preserving owner tokens', async () => {
+    const evalScript = jest.fn(async () => 1);
+    const redis = withKeyPrefix({ ...recordingRedis([]), eval: evalScript }, 'study:');
+
+    await expect(redis.eval!('synthetic-script', ['lock:telegram:u1', 'session:telegram:u1'], ['owner-token'])).resolves.toBe(1);
+    expect(evalScript).toHaveBeenCalledWith('synthetic-script', ['study:lock:telegram:u1', 'study:session:telegram:u1'], ['owner-token']);
+  });
 });

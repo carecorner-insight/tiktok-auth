@@ -4,7 +4,7 @@ import IoRedis from 'ioredis';
 // Matches the option-object style of @upstash/redis so callers don't care
 // which client sits underneath.
 export interface RedisClient {
-  /** Atomic KPI outbox operations. Optional for legacy study/test adapters. */
+  /** Atomic KPI/outbox and lock operations; required by webhook handlers. */
   eval?(script: string, keys: string[], args: string[]): Promise<unknown>;
   get(key: string): Promise<string | null>;
   set(key: string, value: unknown, opts?: { ex?: number; nx?: boolean }): Promise<'OK' | null>;

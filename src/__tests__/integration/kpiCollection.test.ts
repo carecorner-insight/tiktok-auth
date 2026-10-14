@@ -3,6 +3,7 @@ import { handleMessage } from '../../../api/webhook';
 import { getControlRedis } from '../../lib/redis';
 import type { RedisClient } from '../../lib/redis';
 import { KpiOutbox } from '../../analytics/outbox';
+import { KpiCollector } from '../../analytics/collector';
 import { SessionManager } from '../../services/sessionManager';
 import { makeSocialCoachClient } from '../../services/makeSocialCoachClient';
 import { withKeyPrefix } from '../../lib/prefixedRedis';
@@ -80,6 +81,29 @@ realRedis('social-coach webhook through graph and real durable storage', () => {
     await turn('/start'); await handleMessage(adapter, '/start', redis, { menuMode: 'numbered' });
     expect((await events()).filter(row => row.eventType === 'activity')).toHaveLength(1);
     expect(adapter.sendMessage).toHaveBeenCalledTimes(1);
+  });
+  it('handles readiness → yeah → maybe → skip → restart with saved feedback and a reply to every turn', async () => {
+    const feedback = jest.spyOn(KpiCollector.prototype, 'claimFeedback').mockResolvedValue('usefulness');
+    try {
+      await turn('/start'); await turn('20');
+      coach.chat.mockResolvedValueOnce({ reply: block(true), chatId: 'direct:synthetic' });
+      await turn('2'); await turn('1'); await turn('yeah');
+
+      expect(coach.chat).toHaveBeenCalledTimes(1);
+      expect((await new SessionManager(redis).load('telegram', '123456789'))?.kpi).toMatchObject({
+        readiness: '1', usefulness: 'yes', pendingQuestion: null,
+      });
+      const rows = await events();
+      expect(rows.filter(row => row.eventType === 'response_recorded' && row.question === 'usefulness')).toHaveLength(1);
+      expect(rows.find(row => row.question === 'usefulness' && row.eventType === 'response_recorded')?.response).toBe('yes');
+
+      await turn('maybe'); await turn('skip'); await turn('/restart');
+      expect(adapter.sendMessage).toHaveBeenCalledTimes(8);
+      for (const [, response] of (adapter.sendMessage as jest.Mock).mock.calls) expect(response.trim().length).toBeGreaterThan(0);
+      expect((await new SessionManager(redis).load('telegram', '123456789'))?.kpi?.pendingQuestion).toBeNull();
+    } finally {
+      feedback.mockRestore();
+    }
   });
   it('turning collection off stops feedback left over in an existing session', async () => {
     await turn('/start'); await turn('20');
