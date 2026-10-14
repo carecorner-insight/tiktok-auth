@@ -4,6 +4,7 @@ import { KpiCollector } from '../../analytics/collector';
 import { KpiOutbox } from '../../analytics/outbox';
 import { makeState, makeNormalizedMessage } from '../mocks';
 import { buildGraph } from '../../graph/graph';
+import { processMessage } from '../../graph/runner';
 import { EMERGENCY_MESSAGE } from '../../config/questionnaire';
 import { resolveCoachConfig } from '../../services/resolveCoachConfig';
 import { memoryRedis } from '../mocks/controlRedis';
@@ -61,6 +62,48 @@ it.each([['1', '1'], ['2.', '2'], ['3', '3']])('parses a bound scale answer %s',
   expect(parseAnswer('readiness', input)).toBe(expected);
 });
 it('records a legitimate no separately from missing', () => expect(parseAnswer('usefulness', 'no')).toBe('no'));
+it.each([
+  ['yeah', 'yes'], [' Yep! ', 'yes'], ['yup.', 'yes'], ['yah', 'yes'],
+  ['nope', 'no'], ['Nah!', 'no'], ['maybe', 'missing'], ['not sure', 'missing'],
+  ['skip.', 'missing'],
+])('understands a short usefulness answer %s without guessing a score', (text, expected) => {
+  expect(parseAnswer('usefulness', text)).toBe(expected);
+});
+it.each(['yes but I need help', 'no idea what to say to my friend', 'yeah I want to die', 'yes?', 'maybe we can practise'])('keeps substantive or ambiguous text in coaching: %s', text => {
+  expect(parseAnswer('usefulness', text)).toBeNull();
+});
+it.each([
+  ['yeah', 'yes'], ['nope', 'no'], ['maybe', 'missing'], ['skip', 'missing'],
+])('persists readiness then usefulness %s across real graph turns without AI', async (answer, expected) => {
+  let saved = makeState({
+    age: 20, conversationPhase: 'option', selectedOption: 2,
+    kpi: { ...newKpiState(1), scenarioRunId: 'synthetic-scenario', checkinReached: true, pendingQuestion: 'readiness' },
+  });
+  const ai = { chat: jest.fn(async () => ({ reply: 'Unexpected model reply', chatId: 'synthetic' })) };
+  const services = {
+    session: {
+      load: async () => saved,
+      save: async (state: typeof saved) => { saved = structuredClone(state); },
+      clear: async () => {},
+    },
+    whitelist: { isAuthorized: async () => true },
+    typing: { sendTypingIndicator: async () => {} },
+    aiBots: ai, socialCoach: ai, intentLLM: ai, menuMode: 'intent' as const,
+    kpi: { claimFeedback: async () => 'usefulness' as const },
+  };
+
+  const readiness = await processMessage(makeNormalizedMessage({ text: '1' }), services);
+  expect(readiness.response).toContain('was this conversation useful');
+  expect(saved.kpi!.pendingQuestion).toBe('usefulness');
+
+  const usefulness = await processMessage(makeNormalizedMessage({ text: answer }), services);
+  expect(usefulness.response).toContain('Thanks for sharing');
+  expect(saved.kpi).toMatchObject({ readiness: '1', usefulness: expected, pendingQuestion: null });
+  expect(saved.kpi!.facts).toContainEqual(expect.objectContaining({
+    eventType: 'response_recorded', question: 'usefulness', response: expected,
+  }));
+  expect(ai.chat).not.toHaveBeenCalled();
+});
 it('the numerical age cohort is 13–30 inclusive and unknown remains missing', () => {
   expect([null, 12, 13, 25, 30, 31].map(eligibility)).toEqual(['missing', 'ineligible', 'eligible', 'eligible', 'eligible', 'ineligible']);
 });

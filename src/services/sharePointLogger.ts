@@ -1,7 +1,7 @@
 import type { CareyBotState } from '../types/state';
 import { redactPII } from '../lib/pii';
 
-type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean }>;
+type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean; status?: number }>;
 
 // Derives which AI provider answered from the prefixed chat id set by
 // FallbackAIClient ("aibots:" / "dify:"). Returns 'none' when no AI has
@@ -50,13 +50,17 @@ export class SharePointLogger {
     };
 
     try {
-      await this.fetch(this.webhookUrl, {
+      const response = await this.fetch(this.webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(8000),
       });
+      if (!response.ok) console.error('[conversation-log] receiver rejected the request:', response.status);
     } catch {
-      // Fire-and-forget: logging must never block or crash the message flow
+      // The caller awaits delivery after releasing the conversation lock.
+      // Never expose the signed webhook URL or transcript in an error log.
+      console.error('[conversation-log] delivery failed or timed out');
     }
   }
 }

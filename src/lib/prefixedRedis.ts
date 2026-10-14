@@ -19,5 +19,9 @@ export function withKeyPrefix(redis: RedisClient, prefix: string): RedisClient {
     ltrim: (key, start, stop) => redis.ltrim(k(key), start, stop),
     lrange: (key, start, stop) => redis.lrange(k(key), start, stop),
     expire: (key, seconds) => redis.expire(k(key), seconds),
+    // Lua receives only namespaced keys, including conversation-lock release.
+    ...(redis.eval ? {
+      eval: (script: string, keys: string[], args: string[]) => redis.eval!(script, keys.map(k), args),
+    } : {}),
   };
 }

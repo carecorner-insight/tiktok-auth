@@ -38,5 +38,5 @@ jobs:
       - run: npm run typecheck:api
       - run: npm run test:comments -- --silent
       - run: npm run test:kpi -- --silent
-      - name: Bot-control and session isolation regressions
-        run: npx jest --runInBand --silent --testPathPattern='(botControl|botKillSwitch|controlRedis|sessionId|prefixedRedis)\.test\.ts$'
+      - name: Bot-control, reply delivery and session isolation regressions
+        run: npx jest --runInBand --silent --testPathPattern='(botControl|botKillSwitch|controlRedis|sessionId|prefixedRedis|webhookReplies|sharePointLogger)\.test\.ts$'

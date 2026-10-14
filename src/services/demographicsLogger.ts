@@ -1,5 +1,5 @@
 // Posts a single demographic record (age) to a SharePoint list via a Power
-// Automate webhook. Fire-and-forget: never throws, so it can't break the
+// Automate webhook. Bounded delivery never throws, so it can't break the
 // conversation flow. Deduplication (one record per user) is handled by the
 // caller via a Redis NX key — this class only does the POST.
 
@@ -11,6 +11,7 @@ export class DemographicsLogger {
       await fetch(this.webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
         body: JSON.stringify({
           platform,
           userId,
@@ -18,8 +19,8 @@ export class DemographicsLogger {
           recordedAt: new Date().toISOString(),
         }),
       });
-    } catch (err) {
-      console.error('[demographics] log failed (non-fatal):', err);
+    } catch {
+      console.error('[demographics] delivery failed or timed out');
     }
   }
 }
