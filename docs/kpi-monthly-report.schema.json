@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "required": ["monthSGT", "asOf", "revision", "definitionVersion", "metrics", "listItem"],
+  "properties": {
+    "monthSGT": { "type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$" },
+    "asOf": { "type": "string" },
+    "revision": { "type": "string" },
+    "definitionVersion": { "type": "string" },
+    "metrics": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["metricCode", "metricLabel", "group", "unit", "value", "numerator", "denominator", "status", "note"],
+        "properties": {
+          "metricCode": { "type": "string" },
+          "metricLabel": { "type": "string" },
+          "group": { "type": "string", "enum": ["core", "outcome", "coverage", "safety"] },
+          "unit": { "type": "string", "enum": ["percent", "count"] },
+          "value": { "type": ["number", "null"] },
+          "numerator": { "type": ["integer", "null"] },
+          "denominator": { "type": ["integer", "null"] },
+          "status": { "type": "string", "enum": ["available", "no_denominator", "not_available"] },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "listItem": {
+      "type": "object",
+      "required": ["Title", "eventId", "eventType", "monthSGT", "occurredAt", "eventJson"],
+      "properties": {
+        "Title": { "type": "string" },
+        "eventId": { "type": "string", "pattern": "^kpi-report:[0-9]{4}-(0[1-9]|1[0-2])$" },
+        "eventType": { "type": "string", "enum": ["monthly_report"] },
+        "monthSGT": { "type": "string" },
+        "occurredAt": { "type": "string" },
+        "eventJson": { "type": "string", "maxLength": 63000 }
+      }
+    }
+  }
+}

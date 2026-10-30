@@ -1,6 +1,9 @@
 import { createHash } from 'crypto';
 import { type KpiEvent, type Score, sgtDate, POLICY_VERSION } from './contract';
 
+// Version denominators and units independently of participant collection rules.
+export const REPORT_DEFINITION_VERSION = 'carey-monthly-metrics-v1';
+
 function validScore(value: Score): value is '1' | '2' | '3' {
   return value === '1' || value === '2' || value === '3';
 }
@@ -56,16 +59,22 @@ export function computeMonthlyReport(
     if (event.eventType === 'response_recorded' && event.question === 'readiness' && validScore(event.response as Score)) readiness.set(event.scenarioRunId, event.response as Score);
     if (event.eventType === 'script_selected' && event.response === 'yes') scripts.add(event.scenarioRunId);
   }
-  const pairs = new Map<string, { before?: number; after?: number }>();
+  const pairs = new Map<string, { userKey: string; before?: number; after?: number; afterOrder: number }>();
   const offers = new Map<string, KpiEvent>();
-  for (const event of monthly) {
+  for (const [eventOrder, event] of monthly.entries()) {
     if (!active.has(event.userKey) || !event.feedbackId) continue;
     if (event.eventType === 'feedback_offered' && event.question !== 'clarityAfter' && event.deliveryStatus === 'sent') offers.set(event.feedbackId, event);
     if (event.eventType === 'response_recorded' && validScore(event.response as Score)) {
-      const pair = pairs.get(event.feedbackId) ?? {};
+      // Never stitch different people's answers together, even if a bad source
+      // record reuses a feedback ID. Events are already in timestamp order.
+      const pairKey = `${event.userKey}:${event.feedbackId}`;
+      const pair = pairs.get(pairKey) ?? { userKey: event.userKey, afterOrder: -1 };
       if (event.question === 'clarityBefore') pair.before = Number(event.response);
-      if (event.question === 'clarityAfter') pair.after = Number(event.response);
-      pairs.set(event.feedbackId, pair);
+      if (event.question === 'clarityAfter') {
+        pair.after = Number(event.response);
+        pair.afterOrder = eventOrder;
+      }
+      pairs.set(pairKey, pair);
     }
   }
   const completePairs = [...pairs.values()].filter(pair => pair.before !== undefined && pair.after !== undefined);
@@ -82,9 +91,34 @@ export function computeMonthlyReport(
   const earlyKnown = referrals.filter(event => event.tierHistoryComplete && event.maxTierBeforeReferral !== 'missing');
   const sessionsAtTier = (tier: string) => new Set(monthly.filter(event => active.has(event.userKey) && event.eventType === 'tier_estimated' && event.tier === tier && event.sessionId).map(event => event.sessionId)).size;
   const newScenarioUsers = new Set([...starts.values()].filter(event => event.scenarioTag === '1').map(event => event.userKey));
+  const readinessAnswered = [...readiness.keys()].filter(id => complete.has(id)).length;
+  const readinessPositive = [...readiness.entries()].filter(([id, score]) => complete.has(id) && Number(score) >= 2).length;
+  const latestClarityByUser = new Map<string, typeof completePairs[number]>();
+  for (const pair of completePairs) {
+    const current = latestClarityByUser.get(pair.userKey);
+    if (!current || pair.afterOrder > current.afterOrder) latestClarityByUser.set(pair.userKey, pair);
+  }
+  const returners = new Set([...active].filter(key => previous.has(key)));
+  const referralRecipients = new Set(referrals.map(event => event.userKey));
+  const earlyRecipients = new Set<string>();
+  const unresolvedRecipients = new Set<string>();
+  for (const referral of referrals) {
+    const lowMaximum = referral.maxTierBeforeReferral === '1' || referral.maxTierBeforeReferral === '2';
+    if (lowMaximum && referral.tierHistoryComplete) {
+      earlyRecipients.add(referral.userKey);
+    } else if (referral.maxTierBeforeReferral === 'missing' || (lowMaximum && !referral.tierHistoryComplete)) {
+      unresolvedRecipients.add(referral.userKey);
+    }
+    // An observed maximum of 3/4 rules out early delivery for this referral,
+    // even when another part of the history was not measured.
+  }
+  for (const key of earlyRecipients) unresolvedRecipients.delete(key);
   return {
     monthSGT: month, asOf: new Date(asOf).toISOString(), policyVersion: POLICY_VERSION,
-    revision: createHash('sha256').update(JSON.stringify(events)).digest('hex').slice(0, 16),
+    definitionVersion: REPORT_DEFINITION_VERSION,
+    revision: createHash('sha256').update(JSON.stringify({
+      events, previous: [...previous].sort(), definitionVersion: REPORT_DEFINITION_VERSION,
+    })).digest('hex').slice(0, 16),
     K1_usefulness: ratio([...ratings.values()].filter(event => event.response === 'yes').length, ratings.size),
     K2a_scenarioCompletion: ratio(complete.size, starts.size),
     K2b_scenarioParticipation: ratio(scenarioUsers.size, active.size),
@@ -92,8 +126,8 @@ export function computeMonthlyReport(
     K4_monthlyActiveUsers: active.size,
     K5_anyPriorMonthReturners: ratio([...active].filter(key => previous.has(key)).length, active.size),
     K6_conversion: { status: 'deferred_salesforce_matching', insightOfferedUsers: new Set(referrals.filter(event => event.referralTarget === 'insight').map(event => event.userKey)).size },
-    readiness: ratio([...readiness.entries()].filter(([id, score]) => complete.has(id) && Number(score) >= 2).length, complete.size),
-    readinessCoverage: ratio([...readiness.keys()].filter(id => complete.has(id)).length, complete.size),
+    readiness: ratio(readinessPositive, complete.size),
+    readinessCoverage: ratio(readinessAnswered, complete.size),
     scriptChoice: ratio(prepareRuns.filter(run => scripts.has(run.scenarioRunId!)).length, prepareRuns.length),
     retrospectiveClarity: ratio(completePairs.filter(pair => pair.after! > pair.before!).length, completePairs.length),
     clarityCoverage: ratio(completePairs.length, [...offers.values()].filter(event => event.question === 'clarityBefore').length),
@@ -102,6 +136,17 @@ export function computeMonthlyReport(
     support: { userRequested: referrals.filter(event => event.referralSource === 'user_requested').length, botSuggested: referrals.filter(event => event.referralSource === 'bot_suggested').length, sourceMissing: referrals.filter(event => event.referralSource === 'missing').length, missingTierHistory: referrals.length - earlyKnown.length, observedClicks: monthly.filter(event => event.eventType === 'referral_clicked' && active.has(event.userKey)).length },
     distress: { tier3Sessions: sessionsAtTier('3'), tier4Sessions: sessionsAtTier('4'), state8Sessions: new Set(monthly.filter(event => active.has(event.userKey) && event.deliveryStatus === 'sent' && event.state8Reached && event.sessionId).map(event => event.sessionId)).size, label: 'AI estimates; staff validation required' },
     startingSomethingNewReturners: ratio([...newScenarioUsers].filter(key => previous.has(key)).length, newScenarioUsers.size),
+    // Keep existing measures intact. These named user/respondent measures use
+    // the additional denominators documented in the calculation guide.
+    derived: {
+      readinessAmongRespondents: ratio(readinessPositive, readinessAnswered),
+      clarityByUser: ratio([...latestClarityByUser.values()].filter(pair => pair.after! > pair.before!).length, latestClarityByUser.size),
+      requestedReferralUserRate: ratio(new Set(referrals.filter(event => event.referralSource === 'user_requested').map(event => event.userKey)).size, active.size),
+      observedReferralAccessUserRate: ratio(new Set(monthly.filter(event => event.eventType === 'referral_clicked' && active.has(event.userKey)).map(event => event.userKey)).size, active.size),
+      transitionAmongReturners: ratio([...returners].filter(key => newScenarioUsers.has(key)).length, returners.size),
+      earlyReferralUserRate: ratio(earlyRecipients.size, referralRecipients.size),
+      earlyReferralUnresolvedUsers: unresolvedRecipients.size,
+    },
     dataQuality: { unknownAgeContacts: unknown.length, excludedTesters: testers.size, retainedEvents: events.length, responseMissingValue: 'missing', historicalBackfill: false },
   };
 }

@@ -1,4 +1,5 @@
 import { computeMonthlyReport } from '../../analytics/report';
+import { monthlyListItem, monthlyMetrics } from '../../analytics/monthlyMetrics';
 import { makeEvent, newKpiState, type KpiEvent } from '../../analytics/contract';
 import { makeState, makeNormalizedMessage } from '../mocks';
 
@@ -115,3 +116,92 @@ it('does not invent Salesforce conversions from link offers or clicks', () => {
   expect(computeMonthlyReport([], '2026-09', asOf).K6_conversion.status).toBe('deferred_salesforce_matching');
 });
 it('validates the requested month', () => expect(() => computeMonthlyReport([], '2026-13')).toThrow());
+
+it('derives answered-only readiness without changing completion or the existing denominator', () => {
+  const events = [event('activity', 'a')];
+  for (const id of ['a', 'b', 'c']) {
+    const run = { scenarioRunId: id, scenarioStartMonthSGT: '2026-09' };
+    events.push(event('scenario_started', 'a', undefined, run), event('checkin_reached', 'a', undefined, { ...run, deliveryStatus: 'sent' }));
+  }
+  events.push(event('response_recorded', 'a', undefined, { scenarioRunId: 'a', question: 'readiness', response: '3' }),
+    event('response_recorded', 'a', undefined, { scenarioRunId: 'b', question: 'readiness', response: '1' }),
+    event('response_recorded', 'a', '2026-10-01T00:00:00Z', { scenarioRunId: 'a', question: 'readiness', response: 'missing' }));
+  const report = computeMonthlyReport(events, '2026-09', asOf);
+  expect(report.derived.readinessAmongRespondents).toEqual({ numerator: 1, denominator: 2, percent: 50 });
+  expect(report.readiness.denominator).toBe(3);
+  expect(report.readinessCoverage.percent).toBe(66.67);
+});
+
+it('uses each user’s latest complete clarity pair and never joins different users', () => {
+  const events = [event('activity', 'a'), event('activity', 'b')];
+  const addPair = (user: string, feedbackId: string, before: '1' | '3', after: '1' | '3', at: string) => events.push(
+    event('response_recorded', user, at, { feedbackId, question: 'clarityBefore', response: before }),
+    event('response_recorded', user, at, { feedbackId, question: 'clarityAfter', response: after }));
+  addPair('a', 'first', '1', '3', '2026-09-01T01:00:00Z');
+  addPair('a', 'latest', '3', '1', '2026-09-02T01:00:00Z');
+  addPair('b', 'other', '1', '3', '2026-09-03T01:00:00Z');
+  events.push(event('response_recorded', 'a', undefined, { feedbackId: 'bad-reused-id', question: 'clarityBefore', response: '1' }),
+    event('response_recorded', 'b', undefined, { feedbackId: 'bad-reused-id', question: 'clarityAfter', response: '3' }));
+  const report = computeMonthlyReport(events, '2026-09', asOf);
+  expect(report.retrospectiveClarity).toEqual({ numerator: 2, denominator: 3, percent: 66.67 });
+  expect(report.derived.clarityByUser).toEqual({ numerator: 1, denominator: 2, percent: 50 });
+});
+
+it('uses K5 returners as the transition denominator and requires monthly activity', () => {
+  const events = [event('activity', 'a'), event('activity', 'b'), event('activity', 'c')];
+  for (const key of ['a', 'c', 'no-activity']) events.push(event('scenario_started', key, undefined,
+    { scenarioRunId: key, scenarioTag: '1', scenarioStartMonthSGT: '2026-09' }));
+  const report = computeMonthlyReport(events, '2026-09', asOf, new Set(['a', 'b', 'no-activity']));
+  expect(report.derived.transitionAmongReturners).toEqual({ numerator: 1, denominator: 2, percent: 50 });
+});
+
+it('counts referral users once, excluding failed sends, suggestions and users outside the active cohort', () => {
+  const referral = { deliveryStatus: 'sent' as const, referralSource: 'user_requested' as const };
+  const events = [event('activity', 'a'), event('activity', 'b'), event('activity', 'c'),
+    event('referral_delivered', 'a', undefined, referral), event('referral_delivered', 'a', undefined, referral),
+    event('referral_delivered', 'b', undefined, { ...referral, referralSource: 'bot_suggested' }),
+    event('referral_delivered', 'c', undefined, { ...referral, deliveryStatus: 'failed' }),
+    event('referral_clicked', 'a'), event('referral_clicked', 'a'), event('referral_clicked', 'outside')];
+  const report = computeMonthlyReport(events, '2026-09', asOf);
+  expect(report.derived.requestedReferralUserRate).toEqual({ numerator: 1, denominator: 3, percent: 33.33 });
+  expect(report.derived.observedReferralAccessUserRate).toEqual({ numerator: 1, denominator: 3, percent: 33.33 });
+});
+
+it('separates observed early recipients from unresolved users, without treating known high tiers as unresolved', () => {
+  const events = ['a', 'b', 'c', 'd'].map(key => event('activity', key));
+  const low = { deliveryStatus: 'sent' as const, tierHistoryComplete: true, maxTierBeforeReferral: '2' as const };
+  events.push(event('referral_delivered', 'a', undefined, low),
+    event('referral_delivered', 'a', undefined, { ...low, tierHistoryComplete: false }),
+    event('referral_delivered', 'b', undefined, { ...low, tierHistoryComplete: false }),
+    event('referral_delivered', 'c', undefined, { ...low, tierHistoryComplete: false, maxTierBeforeReferral: '3' }),
+    event('referral_delivered', 'd', undefined, low), event('tier_estimated', 'd', '2026-09-03T01:00:00Z', { tier: '4' }));
+  const report = computeMonthlyReport(events, '2026-09', asOf);
+  expect(report.derived.earlyReferralUserRate).toEqual({ numerator: 2, denominator: 4, percent: 50 });
+  expect(report.derived.earlyReferralUnresolvedUsers).toBe(1);
+});
+
+it('revises historical-user results when the first-active index changes', () => {
+  const events = [event('activity', 'a')];
+  const before = computeMonthlyReport(events, '2026-09', asOf);
+  const after = computeMonthlyReport(events, '2026-09', asOf, new Set(['a']));
+  expect(after.revision).not.toBe(before.revision);
+});
+
+it('publishes one stable monthly List item with aggregate metrics, explicit unavailable values and no user keys', () => {
+  const report = computeMonthlyReport([event('activity', 'private-participant-key')], '2026-09', asOf);
+  const metrics = monthlyMetrics(report);
+  const health = { collectionEnabled: true, pendingEvents: 2, receiverConfigured: true };
+  const item = monthlyListItem(report, metrics, health);
+  expect(item).toMatchObject({ eventId: 'kpi-report:2026-09', eventType: 'monthly_report', monthSGT: '2026-09' });
+  expect(JSON.parse(item.eventJson).metrics).toEqual(metrics);
+  expect(JSON.parse(item.eventJson)).toMatchObject(health);
+  expect(metrics.find(row => row.metricCode === 'K1_usefulness')).toMatchObject({ value: null, status: 'no_denominator' });
+  expect(metrics.find(row => row.metricCode === 'K6_conversion')).toMatchObject({ value: null, numerator: null, status: 'not_available' });
+  expect(metrics.find(row => row.metricCode === 'K4_monthlyActiveUsers')).toMatchObject({ value: 1, unit: 'count' });
+  expect(new Set(metrics.map(row => row.metricCode)).size).toBe(metrics.length);
+  expect(item.eventJson).not.toContain('private-participant-key');
+  expect(item.eventJson).not.toContain('userKey');
+  expect(item.eventJson.length).toBeLessThan(63000);
+  const later = computeMonthlyReport([], '2026-09', asOf + 1000);
+  expect(monthlyListItem(later, monthlyMetrics(later), health).eventId).toBe(item.eventId);
+});

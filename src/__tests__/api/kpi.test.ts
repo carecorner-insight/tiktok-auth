@@ -14,6 +14,7 @@ const request = (overrides: unknown = {}) => ({ method: 'GET', query: { kpi: 'tr
 beforeEach(() => {
   jest.clearAllMocks(); process.env.BOT_CONTROL_TOKEN = 'synthetic-admin-only'; process.env.KPI_USER_KEY_SECRET = 'a'.repeat(64);
   delete process.env.CRON_SECRET; delete process.env.KPI_COLLECTION_ENABLED; delete process.env.TELEGRAM_WEBHOOK_SECRET;
+  delete process.env.KPI_REPORT_TOKEN;
   store = { get: jest.fn(async () => null), eval: jest.fn(async () => [0, 0, '']), set: jest.fn(async () => 'OK') };
   (getControlRedis as jest.Mock).mockReturnValue(store);
 });
@@ -77,4 +78,56 @@ it.each([undefined, 'wrong', ['synthetic-telegram-secret']])('main Telegram refu
   process.env.TELEGRAM_WEBHOOK_SECRET = 'synthetic-telegram-secret'; const res = response();
   await webhook(request({ method: 'POST', query: { platform: 'telegram' }, headers: { 'x-telegram-bot-api-secret-token': value } }), res as unknown as VercelResponse);
   expect(res.status).toHaveBeenCalledWith(401);
+});
+
+describe('monthly report integration', () => {
+  beforeEach(() => {
+    jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-30T00:00:00Z'));
+    process.env.KPI_REPORT_TOKEN = 'synthetic-read-only-report-token';
+    store.eval.mockImplementation(async (script: string) => script.startsWith('-- kpi-status') ? [2, 0, ''] : []);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('returns the exact monthly List item and matching UI metrics through report-only authentication', async () => {
+    const res = response();
+    await handler(request({ query: { kpi: 'true', action: 'report', month: '2026-10' },
+      headers: { 'x-kpi-report-token': 'synthetic-read-only-report-token' } }), res as unknown as VercelResponse);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const result = res.json.mock.calls[0][0];
+    expect(result.listItem.eventId).toBe('kpi-report:2026-10');
+    expect(JSON.parse(result.listItem.eventJson).metrics).toEqual(result.metrics);
+    expect(result.delivery.pending).toBe(2);
+    expect(JSON.stringify(result)).not.toContain('synthetic-read-only-report-token');
+    expect(store.set).toHaveBeenCalledWith(expect.stringMatching(/^kpi:report:/), expect.any(String), { ex: 400 * 86400 });
+  });
+
+  it.each(['export', 'flush', undefined])('does not grant the report credential access to %s', async action => {
+    const res = response();
+    await handler(request({ query: { kpi: 'true', action }, headers: { 'x-kpi-report-token': 'synthetic-read-only-report-token' } }), res as unknown as VercelResponse);
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(getControlRedis).not.toHaveBeenCalled();
+  });
+
+  it('does not grant the report credential access to bot controls', async () => {
+    const res = response();
+    await handler(request({ method: 'POST', query: {}, body: { enabled: false },
+      headers: { 'x-kpi-report-token': 'synthetic-read-only-report-token' } }), res as unknown as VercelResponse);
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(getControlRedis).not.toHaveBeenCalled();
+  });
+
+  it.each(['2026-13', '2026-11', ['2026-10'], ['2026-10', '2026-09']])('rejects invalid or future months %j', async month => {
+    const res = response();
+    await handler(request({ query: { kpi: 'true', action: 'report', month }, headers: { 'x-kpi-report-token': 'synthetic-read-only-report-token' } }), res as unknown as VercelResponse);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(store.set).not.toHaveBeenCalled();
+  });
+
+  it('keeps unavailable storage as an error rather than publishing an empty successful report', async () => {
+    store.eval.mockRejectedValue(new Error('offline'));
+    const res = response();
+    await handler(request({ query: { kpi: 'true', action: 'report', month: '2026-10' }, headers: { 'x-kpi-report-token': 'synthetic-read-only-report-token' } }), res as unknown as VercelResponse);
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(store.set).not.toHaveBeenCalled();
+  });
 });
