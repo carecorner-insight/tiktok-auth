@@ -1,9 +1,19 @@
 # Social coach: KPI collection rollout
 
+For calculated monthly metrics in this same List and the Power BI import query,
+use [Monthly KPI reports and Power BI](KPI_POWERBI_SETUP.md). Its scheduled flow
+upserts one `monthly_report` item per month. The raw-event flow below remains
+separate; filter monthly summaries out of raw-event analyses.
+
 This is a separate, content-free event pipeline. Leave the existing chat-log,
 Teams crisis-alert and study flows unchanged. Salesforce matching is not implemented.
 A passing build, a successful deployment, and a flow HTTP 202 are **not** proof
 that Microsoft Lists has saved a KPI event.
+
+For current field names, exact KPI counting rules and differences from the original
+chatlog specification, use the [implementation-aligned KPI data spec](./SOCIAL_COACH_KPI_DATA_SPEC.md)
+(22 October 2026). It distinguishes payload fields, stored List columns and calculated
+report outputs; do not create legacy `usefulRating` or generic `step` columns for this sender.
 
 ## 1. Create the Microsoft List
 

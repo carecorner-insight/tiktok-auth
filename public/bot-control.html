@@ -26,6 +26,16 @@
     #message { min-height:25px; white-space:pre-wrap; } #message.error { color:#b42331; }
     #maintenanceCopy { white-space:pre-wrap; padding:16px; border:1px solid var(--border); border-radius:8px; background:#fafcfb; }
     #target,#scope { overflow-wrap:anywhere; } dl { display:grid; grid-template-columns:150px 1fr; gap:8px; } dd { margin:0; overflow-wrap:anywhere; } dt { color:var(--muted); }
+    .tabs { display:flex; gap:8px; margin-bottom:20px; }
+    .tabs [aria-selected="true"] { background:var(--green); color:white; }
+    .month-picker { max-width:220px; } .metric-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; margin:20px 0; }
+    .metric-card { background:white; border:1px solid var(--border); border-radius:12px; padding:20px; }
+    .metric-card h3 { font-size:16px; margin:0 0 8px; } .metric-value { font-size:32px; font-weight:700; margin:4px 0; }
+    .metric-card p { margin:8px 0; } progress { width:100%; height:10px; accent-color:var(--green); }
+    .metric-table-wrap { overflow-x:auto; } .metric-table { border-collapse:collapse; width:100%; min-width:660px; }
+    .metric-table th,.metric-table td { text-align:left; padding:12px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+    .metric-table th { background:#f3f6f5; } .metric-table td:first-child { width:28%; } .metric-table td:last-child { width:42%; }
+    #metricsMessage.error { color:#b42331; } #metricsHealth { white-space:pre-line; }
     @media(max-width:540px) { header { padding:14px 20px; } .card { padding:18px; } dl { grid-template-columns:1fr; gap:2px; } dd { margin-bottom:12px; } .row button { flex:1; } }
   </style>
   <script src="bot-control.js" defer></script>
@@ -34,13 +44,18 @@
   <header><div><strong>Bot Control</strong><small>CareyBot · Care Corner INSIGHT</small></div><a href="index.html">Staff tools</a></header>
   <main>
     <section id="gate" class="card">
-      <h1>Manage Carey</h1><p class="muted">Pause coaching or select its Qwen model. Use the dedicated Bot Control password from your project administrator—not the live-log token.</p>
+      <h1>Manage Carey</h1><p class="muted">View monthly metrics, pause coaching or select its Qwen model. Use the dedicated Bot Control password from your project administrator.</p>
       <label for="password">Bot Control password</label><input id="password" type="password" autocomplete="off" maxlength="512" />
       <div class="row"><button id="login" class="primary">Open controls</button></div>
     </section>
     <p id="message" role="status" aria-live="polite"></p>
     <div id="settings" hidden>
       <section class="card"><h1>CareyChats operations</h1><p id="target"></p><dl><dt>Environment</dt><dd id="environment"></dd><dt>Control scope</dt><dd id="scope"></dd><dt>Deployment</dt><dd id="deployment"></dd></dl><button id="logout">Lock controls</button></section>
+      <div class="tabs" role="tablist" aria-label="Staff tools">
+        <button id="operationsTab" role="tab" aria-selected="true" aria-controls="operationsPanel">Bot settings</button>
+        <button id="metricsTab" role="tab" aria-selected="false" aria-controls="metricsPanel" tabindex="-1">Metrics</button>
+      </div>
+      <div id="operationsPanel" role="tabpanel" aria-labelledby="operationsTab">
       <section class="card">
         <h2>Bot availability <span id="mode" class="badge">UNKNOWN</span></h2>
         <p id="changed" class="muted"></p>
@@ -58,6 +73,22 @@
         <button id="saveModel" class="primary">Save model</button>
       </section>
       <section class="card"><h2>Teams alerts</h2><p>Power Automate setup is pending. This page does not yet send Teams notifications. Your administrator must confirm the channel, people to mention, alert trigger and delivery checks.</p></section>
+      </div>
+      <div id="metricsPanel" role="tabpanel" aria-labelledby="metricsTab" hidden>
+        <section class="card">
+          <h2>Monthly social coach metrics</h2>
+          <p>Calendar months in Singapore time · ages 13–30 · registered test users excluded.</p>
+          <label for="metricsMonth">Reporting month</label><input id="metricsMonth" class="month-picker" type="month" />
+          <div class="row"><button id="loadMetrics" class="primary">Refresh metrics</button><button id="downloadMetrics" disabled>Download CSV</button><button id="downloadMonthlyItem" disabled>Download monthly List item</button></div>
+          <p id="metricsMessage" role="status" aria-live="polite"></p>
+          <p class="muted">Power Automate copies a monthly summary into the KPI List. Viewing this page does not confirm that the Microsoft flow has saved it.</p>
+        </section>
+        <div id="metricsResults" hidden>
+          <section class="card"><h2>Reporting status</h2><p id="metricsAsOf"></p><p id="metricsHealth" class="notice"></p><p id="metricsRevision" class="muted"></p></section>
+          <div id="metricsCore" class="metric-grid" aria-label="Core KPIs"></div>
+          <section class="card"><h2>Derived outcomes and data coverage</h2><p>Read each measure with its denominator. Unavailable results remain blank rather than becoming zero.</p><div class="metric-table-wrap"><table class="metric-table"><thead><tr><th scope="col">Measure</th><th scope="col">Result</th><th scope="col">Numerator / denominator</th><th scope="col">Meaning</th></tr></thead><tbody id="metricsDetails"></tbody></table></div></section>
+        </div>
+      </div>
     </div>
   </main>
 </body>

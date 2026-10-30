@@ -3,12 +3,13 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getControlRedis } from '../lib/redis';
 import { KpiOutbox, RETENTION_SECONDS } from './outbox';
 import { computeMonthlyReport } from './report';
+import { monthlyListItem, monthlyMetrics } from './monthlyMetrics';
 import { collectionEnabled } from './collector';
 import { INSIGHT_URL, CREST_URL } from '../config/questionnaire';
 import { signReferral, type KpiEvent } from './contract';
 
 function sameSecret(actual: unknown, expected: string | undefined): boolean {
-  if (!expected || typeof actual !== 'string') return false;
+  if (!expected || typeof actual !== 'string' || actual.length > 512) return false;
   const left = Buffer.from(actual);
   const right = Buffer.from(expected);
   return left.length === right.length && timingSafeEqual(left, right);
@@ -49,7 +50,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const admin = sameSecret(req.headers['x-bot-control-token'], process.env.BOT_CONTROL_TOKEN);
   const cron = sameSecret(req.headers.authorization, process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : undefined);
-  if (!admin && !cron) return res.status(401).json({ error: 'Unauthorized' });
+  // The Microsoft flow needs aggregates, not controls or participant exports.
+  const reportReader = req.method === 'GET' && req.query.action === 'report' &&
+    sameSecret(req.headers['x-kpi-report-token'], process.env.KPI_REPORT_TOKEN);
+  if (!admin && !cron && !reportReader) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const redis = getControlRedis();
     const outbox = new KpiOutbox(redis, process.env.KPI_POWER_AUTOMATE_WEBHOOK_URL);
@@ -66,10 +70,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ events, nextOffset: events.length === 1000 ? offset + events.length : null });
     }
     if (req.query.action === 'report') {
-      const month = String(req.query.month ?? '');
-      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ error: 'Use YYYY-MM' });
+      const month = req.query.month;
+      if (typeof month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ error: 'Use one YYYY-MM month' });
       const from = Date.parse(`${month}-01T00:00:00+08:00`);
       const asOf = Date.now();
+      const currentMonthSGT = new Date(asOf + 8 * 3600_000).toISOString().slice(0, 7);
+      if (month > currentMonthSGT) return res.status(400).json({ error: 'Choose the current month or an earlier month' });
       if (from < asOf - RETENTION_SECONDS * 1000) return res.status(409).json({ error: 'Month is outside retained event coverage; use the Microsoft archive' });
       const events: KpiEvent[] = [];
       for (let offset = 0; offset <= 50000; offset += 1000) {
@@ -81,7 +87,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const report = computeMonthlyReport(events, month, asOf, await outbox.priorUsers(from));
       const status = await outbox.status();
       await redis.set(`kpi:report:${month}:${report.revision}`, JSON.stringify(report), { ex: RETENTION_SECONDS });
-      return res.status(200).json({ ...report, delivery: status, provisional: true });
+      const metrics = monthlyMetrics(report);
+      return res.status(200).json({ ...report, metrics, listItem: monthlyListItem(report, metrics, {
+        collectionEnabled: collectionEnabled(), pendingEvents: status.pending, receiverConfigured: status.receiverConfigured,
+      }),
+        collectionEnabled: collectionEnabled(), delivery: status, provisional: true });
     }
     return res.status(200).json({
       enabled: collectionEnabled(), telegramVerificationConfigured: !!process.env.TELEGRAM_WEBHOOK_SECRET,
